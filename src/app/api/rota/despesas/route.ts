@@ -1,0 +1,6 @@
+import { apagarDespesa, criarDespesa } from '@/controllers/rota.controller';
+import { tratarErros } from '@/middlewares/tratar-erros.middleware';
+import { exigirChaveApi } from '@/middlewares/chave-api.middleware';
+
+export const POST = tratarErros(exigirChaveApi(criarDespesa));
+export const DELETE = tratarErros(exigirChaveApi(apagarDespesa));
