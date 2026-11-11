@@ -1,5 +1,5 @@
-import { ListaTarefas } from '@/components/painel/lista-tarefas';
+import { TarefasCarregador } from '@/components/painel/tarefas-carregador';
 
 export default function Pagina() {
-  return <ListaTarefas />;
+  return <TarefasCarregador />;
 }

@@ -124,3 +124,28 @@ export async function registrarComentarioTarefa(tarefaId: number, conteudo: stri
 export async function iniciarTarefa(tarefaId: number): Promise<void> {
   await requisitar(`/tarefa/${tarefaId}/iniciar`, { metodo: 'POST', corpo: {} });
 }
+
+// ---- Cadastros usados no filtro de tarefas ----
+
+export function listarSetoresTarefa() {
+  return requisitarJson<RespostaPaginada<{ id: number; descricao: string; ativo?: boolean }>>('/setor-tarefa', {
+    parametros: { _page: 1, _limit: 1000, ativo: 'true', ativo_operator: 'equals' },
+  });
+}
+
+export function listarFluxosTarefa() {
+  return requisitarJson<RespostaPaginada<{ id: number; descricao: string; ativo?: boolean; setor?: { id: number; descricao?: string } | null }>>('/fluxo-tarefa', {
+    parametros: { _page: 1, _limit: 1000, ativo: 'true', ativo_operator: 'equals', displayFields: 'id,descricao,ativo,setor.id,setor.descricao' },
+  });
+}
+
+export function listarUsuariosAtivos() {
+  return requisitarJson<RespostaPaginada<{ id: number; nome: string; situacao?: string }>>('/usuario', {
+    parametros: { _page: 1, _limit: 1000, situacao: 'Ativo', situacao_operator: 'equals' },
+  });
+}
+
+// Listagem de tarefas com parâmetros já montados (filtro da tela de tarefas).
+export function listarTarefasComFiltro<T>(parametros: Parametros) {
+  return requisitarJson<RespostaPaginada<T>>('/tarefa', { parametros });
+}

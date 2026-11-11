@@ -103,6 +103,18 @@ export const config = {
     };
   },
 
+  // Workflows do n8n (servidor interno). Sem a URL, a integração fica desligada e nada é disparado.
+  get n8n() {
+    return {
+      cobrancaUrl: obrigatoria('N8N_COBRANCA_WEBHOOK_URL'), // webhook do workflow de cobrança de documentos (ChatGuru)
+      token: opcional('N8N_TOKEN'), // enviado no cabeçalho x-forentis-token para o n8n conferir quem chamou
+      retornoToken: opcional('N8N_RETORNO_TOKEN'), // o n8n manda este valor em x-n8n-token ao avisar o resultado
+      timeoutSegundos: numero('N8N_TIMEOUT', 30),
+      // Endereço do Forentis visto pelo servidor do n8n (ex.: http://192.168.0.20:3000). Vazio = n8n não avisa o resultado.
+      urlForentis: opcional('FORENTIS_URL').replace(/\/+$/, ''),
+    };
+  },
+
   get api() {
     return { chave: opcional('API_KEY') }; // vazio = API aberta (só para testes locais)
   },

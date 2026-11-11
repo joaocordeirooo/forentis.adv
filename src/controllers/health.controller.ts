@@ -10,6 +10,7 @@ export async function verificarSaude(): Promise<Response> {
       openai: estaConfigurado(() => config.openai),
       chatguru: estaConfigurado(() => config.chatguru),
       email: estaConfigurado(() => config.smtp),
+      n8nCobranca: estaConfigurado(() => config.n8n),
       chaveApi: Boolean(config.api.chave),
     },
   });

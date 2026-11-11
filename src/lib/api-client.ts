@@ -1,11 +1,14 @@
 'use client';
 
 import type { Atendente, ResultadoMaterialColetado, TarefaAtendimento } from '@/models/atendimento.model';
+import type { Agente } from '@/models/agente.model';
 import type { MensagemDex } from '@/models/dex.model';
 import type { AcaoNova, Despesa, ParadaPainel, PosicaoVeiculo } from '@/models/rota.model';
 import type { Execucao } from '@/models/execucao.model';
 import type { Solicitacao } from '@/models/solicitacao.model';
 import type { EstadoTarefa, ResultadoBuscaTarefas, Tarefa } from '@/models/tarefa.model';
+import type { OpcoesFiltroTarefas, ResultadoFiltroTarefas } from '@/models/filtro-tarefas.model';
+import type { PedidoCobranca, StatusCobrancaTarefa } from '@/models/cobranca-n8n.model';
 
 // Chamadas do painel para a nossa própria API (/api/...).
 // A chave de API (se o .env tiver API_KEY) fica guardada no navegador.
@@ -99,6 +102,20 @@ export const api = {
   saude: () => chamar<Saude>('/api/health'),
   tarefas: (atualizar = false) =>
     chamar<Omit<ResultadoBuscaTarefas, 'tarefas'> & { total: number; tarefas: (Tarefa & { estado: EstadoTarefa | null })[] }>(`/api/tarefas${atualizar ? '?atualizar=1' : ''}`),
+  opcoesFiltroTarefas: (atualizar = false) => chamar<OpcoesFiltroTarefas>(`/api/tarefas/opcoes${atualizar ? '?atualizar=1' : ''}`),
+  filtrarTarefas: (consulta: string) => chamar<ResultadoFiltroTarefas>(`/api/tarefas/filtro?${consulta}`),
+  agentes: () => chamar<Agente[]>('/api/agentes'),
+  criarAgente: (dados: Record<string, unknown>) => chamar<Agente>('/api/agentes', { metodo: 'POST', corpo: dados }),
+  editarAgente: (id: string, dados: Record<string, unknown>) => chamar<Agente>(`/api/agentes/${id}`, { metodo: 'PATCH', corpo: dados }),
+  excluirAgente: (id: string) => chamar<{ removido: boolean }>(`/api/agentes/${id}`, { metodo: 'DELETE' }),
+  registrarAtualizacaoAgente: (id: string, texto: string, autor?: string) =>
+    chamar<Agente>(`/api/agentes/${id}/atualizacoes`, { metodo: 'POST', corpo: { texto, autor: autor || null } }),
+  removerAtualizacaoAgente: (id: string, atualizacaoId: string) =>
+    chamar<Agente>(`/api/agentes/${id}/atualizacoes?atualizacaoId=${encodeURIComponent(atualizacaoId)}`, { metodo: 'DELETE' }),
+  statusCobranca: (tarefaIds: number[]) =>
+    chamar<{ configurado: boolean; tarefas: StatusCobrancaTarefa[] }>(`/api/integracoes/n8n/cobranca?tarefas=${tarefaIds.join(',')}`),
+  cobrarPeloN8n: (tarefaIds: number[], solicitadoPor?: string) =>
+    chamar<PedidoCobranca>('/api/integracoes/n8n/cobranca', { metodo: 'POST', corpo: { tarefaIds, solicitadoPor: solicitadoPor || null } }),
   execucoes: () => chamar<ExecucaoResumo[]>('/api/analises'),
   execucao: (id: string) => chamar<ExecucaoCompleta>(`/api/analises/${id}`),
   iniciarAnalise: (tarefaId?: number, forcar = false) =>
