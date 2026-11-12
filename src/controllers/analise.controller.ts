@@ -10,8 +10,8 @@ type ComId = { params: Promise<{ id: string }> };
 
 // POST /api/analises — inicia a análise e responde na hora; o trabalho continua em segundo plano.
 export async function iniciarAnalise(request: Request): Promise<Response> {
-  const { tarefaId, forcar } = await lerCorpo(request, iniciarAnaliseSchema);
-  const execucao = await criarExecucao(tarefaId ?? null, { forcar });
+  const { tarefaId, tarefaIds, forcar } = await lerCorpo(request, iniciarAnaliseSchema);
+  const execucao = await criarExecucao(tarefaId ?? null, { forcar, tarefaIds });
   after(() => executarAnalise(execucao));
   return Response.json(
     { execucaoId: execucao.id, status: execucao.status, acompanhar: `/api/analises/${execucao.id}` },

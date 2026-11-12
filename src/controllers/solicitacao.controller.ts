@@ -1,5 +1,7 @@
 import * as solicitacoes from '@/service/solicitacao.service';
+import { classificarPendencia } from '@/service/solicitacao-indefinida.service';
 import {
+  classificarPendenciaSchema,
   concluirSolicitacaoSchema,
   descartarSolicitacaoSchema,
   editarSolicitacaoSchema,
@@ -46,8 +48,34 @@ export async function descartarSolicitacao(request: Request, { params }: ComId):
 
 export async function baixarAnexo(_request: Request, { params }: ComAnexo): Promise<Response> {
   const { id, anexoId } = await params;
-  const { nome, conteudo } = await solicitacoes.baixarAnexo(id, anexoId);
+  const { nome, conteudo, mimeType } = await solicitacoes.baixarAnexo(id, anexoId);
   return new Response(new Uint8Array(conteudo), {
-    headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${nome}"` },
+    headers: { 'Content-Type': mimeType, 'Content-Disposition': `inline; filename="${nome}"` },
   });
+}
+
+// POST /api/solicitacoes/:id/anexos — multipart: arquivo + por (nome do funcionário).
+export async function anexarArquivo(request: Request, { params }: ComId): Promise<Response> {
+  const { id } = await params;
+  const form = await request.formData().catch(() => null);
+  const arquivo = form?.get('arquivo');
+  const por = String(form?.get('por') ?? '').trim();
+  if (!(arquivo instanceof File)) throw new AppError('Envie o arquivo no campo "arquivo".', 400);
+  if (por.length < 2) throw new AppError('Informe o nome do funcionário.', 400);
+  return Response.json(await solicitacoes.anexarArquivo(id, arquivo, por));
+}
+
+// DELETE /api/solicitacoes/:id/anexos/:anexoId?por=Nome — só anexos incluídos pelo funcionário.
+export async function removerAnexo(request: Request, { params }: ComAnexo): Promise<Response> {
+  const { id, anexoId } = await params;
+  const por = new URL(request.url).searchParams.get('por')?.trim() ?? '';
+  if (por.length < 2) throw new AppError('Informe o nome do funcionário.', 400);
+  return Response.json(await solicitacoes.removerAnexo(id, anexoId, por));
+}
+
+// POST /api/solicitacoes/:id/classificar — leva uma pendência sem destinatário para o cliente, uma empresa, ou ignora.
+export async function classificarSolicitacao(request: Request, { params }: ComId): Promise<Response> {
+  const { id } = await params;
+  const dados = await lerCorpo(request, classificarPendenciaSchema);
+  return Response.json(await classificarPendencia(id, dados));
 }

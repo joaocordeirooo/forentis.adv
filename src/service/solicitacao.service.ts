@@ -1,7 +1,9 @@
 import { AppError } from '@/errors/app.errors';
-import type { Solicitacao } from '@/models/solicitacao.model';
+import type { AnexoSolicitacao, Solicitacao } from '@/models/solicitacao.model';
 import { STATUS_ABERTOS } from '@/models/solicitacao.model';
-import { lerAnexo } from '@/repositories/anexo.repository';
+import { apagarAnexo, gravarAnexo, lerAnexo } from '@/repositories/anexo.repository';
+import { randomUUID } from 'node:crypto';
+import { origemPadraoAntiga } from '@/utils/origem-tarefa.util';
 import {
   atualizarSolicitacao,
   listarSolicitacoes,
@@ -17,14 +19,15 @@ import { concluirSolicitacaoEmpresa } from './envio-empresa.service';
 
 const emAndamento = new Set<string>(); // evita concluir a mesma solicitação duas vezes ao mesmo tempo
 
-export function listar(filtro: FiltroSolicitacoes) {
-  return listarSolicitacoes(filtro);
+export async function listar(filtro: FiltroSolicitacoes) {
+  const lista = await listarSolicitacoes(filtro);
+  return lista.map((s) => (s.origem ? s : { ...s, origem: origemPadraoAntiga() }));
 }
 
 export async function obter(id: string): Promise<Solicitacao> {
   const solicitacao = await obterSolicitacao(id);
   if (!solicitacao) throw new AppError('Solicitação não encontrada.', 404);
-  return solicitacao;
+  return solicitacao.origem ? solicitacao : { ...solicitacao, origem: origemPadraoAntiga() };
 }
 
 function exigirAberta(s: Solicitacao) {
@@ -84,6 +87,9 @@ export async function descartar(id: string, dados: DescartarSolicitacao): Promis
 export async function concluir(id: string, dados: ConcluirSolicitacao): Promise<Solicitacao> {
   const atual = await obter(id);
   exigirAberta(atual);
+  if (atual.tipo === 'indefinida') {
+    throw new AppError('Pendências sem destinatário não são enviadas: classifique cada uma (cliente, empresa ou ignorar).', 400);
+  }
   if (atual.bloqueios.length && !dados.ignorarBloqueios) {
     throw new AppError('A solicitação tem bloqueios. Confira e, para enviar mesmo assim, envie ignorarBloqueios: true.', 409, atual.bloqueios);
   }
@@ -122,5 +128,73 @@ export async function baixarAnexo(id: string, anexoId: string) {
   if (!anexo) throw new AppError('Anexo não encontrado.', 404);
   const conteudo = await lerAnexo(id, anexo.nomeArquivo);
   if (!conteudo) throw new AppError('Arquivo do anexo não está na pasta de dados.', 404);
-  return { nome: anexo.nomeArquivo, conteudo };
+  return { nome: anexo.nomeArquivo, conteudo, mimeType: anexo.mimeType ?? 'application/pdf' };
+}
+
+// ---- Anexos que o funcionário inclui na conferência (pedido à empresa) ----
+
+const LIMITE_ANEXO_BYTES = 15 * 1024 * 1024;
+const TIPOS_ACEITOS: Record<string, string> = {
+  pdf: 'application/pdf',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+};
+
+export async function anexarArquivo(id: string, arquivo: File, por: string): Promise<Solicitacao> {
+  const atual = await obter(id);
+  exigirAberta(atual);
+  if (atual.tipo !== 'empresa') throw new AppError('Por enquanto só o pedido à empresa (e-mail) leva anexos.', 400);
+  if (!arquivo.size) throw new AppError('Arquivo vazio.', 400);
+  if (arquivo.size > LIMITE_ANEXO_BYTES) throw new AppError('O arquivo passa de 15 MB.', 400);
+  const extensao = arquivo.name.split('.').pop()?.toLowerCase() ?? '';
+  const mimeType = TIPOS_ACEITOS[extensao];
+  if (!mimeType) throw new AppError(`Tipo de arquivo não aceito (.${extensao}). Use PDF, imagem, Word ou Excel.`, 400);
+
+  // Nome único na pasta da solicitação, mantendo o nome original legível.
+  const limpo = arquivo.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w.-]+/g, '_').slice(-80);
+  const usados = new Set(atual.anexos.map((a) => a.nomeArquivo));
+  let nomeArquivo = limpo;
+  for (let n = 2; usados.has(nomeArquivo); n++) nomeArquivo = limpo.replace(/(\.[^.]+)?$/, `_${n}$1`);
+
+  await gravarAnexo(id, nomeArquivo, Buffer.from(await arquivo.arrayBuffer()));
+  const anexo: AnexoSolicitacao = {
+    id: randomUUID(),
+    nomeArquivo,
+    tipo: 'anexo_manual',
+    paginas: [],
+    arquivoOrigemId: null,
+    arquivoOrigemNome: arquivo.name,
+    finalidade: 'Anexado na conferência',
+    tamanhoBytes: arquivo.size,
+    incluir: true,
+    origem: 'funcionario',
+    mimeType,
+    anexadoPor: por,
+  };
+  const atualizada = await atualizarSolicitacao(id, (s) => ({
+    ...s,
+    anexos: [...s.anexos, anexo],
+    historico: [...s.historico, { em: new Date().toISOString(), evento: 'anexo_incluido', por, detalhe: arquivo.name }],
+  }));
+  return atualizada!;
+}
+
+export async function removerAnexo(id: string, anexoId: string, por: string): Promise<Solicitacao> {
+  const atual = await obter(id);
+  exigirAberta(atual);
+  const anexo = atual.anexos.find((a) => a.id === anexoId);
+  if (!anexo) throw new AppError('Anexo não encontrado.', 404);
+  if (anexo.origem !== 'funcionario') throw new AppError('Recortes da IA não são apagados: desmarque para tirar do envio.', 400);
+  await apagarAnexo(id, anexo.nomeArquivo);
+  const atualizada = await atualizarSolicitacao(id, (s) => ({
+    ...s,
+    anexos: s.anexos.filter((a) => a.id !== anexoId),
+    historico: [...s.historico, { em: new Date().toISOString(), evento: 'anexo_removido', por, detalhe: anexo.arquivoOrigemNome ?? anexo.nomeArquivo }],
+  }));
+  return atualizada!;
 }

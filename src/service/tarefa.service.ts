@@ -1,5 +1,5 @@
 import { TIPOS_MONITORADOS } from '@/config/tarefas.config';
-import { listarTarefas } from '@/integrations/lawyertool.integration';
+import { listarTarefas, obterTarefa } from '@/integrations/lawyertool.integration';
 import type { ResultadoBuscaTarefas, Tarefa } from '@/models/tarefa.model';
 
 const SITUACAO = 'pendente';
@@ -13,6 +13,7 @@ const CAMPOS = [
   'usuarioResponsavel.nome',
   'tipoTarefa.id', 'tipoTarefa.descricao',
   'fluxo.id', 'fluxo.descricao',
+  'setor.id', 'setor.descricao',
 ].join(',');
 
 let cache: ResultadoBuscaTarefas | null = null;
@@ -62,4 +63,39 @@ export async function buscarTarefasPendentes(forcar = false): Promise<ResultadoB
     atualizadoEm: new Date().toISOString(),
   };
   return cache;
+}
+
+// Busca tarefas escolhidas a dedo (aba Tarefas), de qualquer setor/fluxo e situação.
+// Devolve também os ids que o Lawyertool não trouxe, para a execução listar nominalmente.
+export async function buscarTarefasPorIds(ids: number[]): Promise<{ tarefas: Tarefa[]; naoEncontradas: number[] }> {
+  const unicos = [...new Set(ids)];
+  const tarefas: Tarefa[] = [];
+  for (let i = 0; i < unicos.length; i += POR_PAGINA) {
+    const lote = unicos.slice(i, i + POR_PAGINA);
+    const resposta = await listarTarefas({
+      _page: 1,
+      _limit: POR_PAGINA,
+      id: lote.join(','),
+      id_operator: lote.length === 1 ? 'equals' : 'in',
+      displayFields: CAMPOS,
+    });
+    // Confere de novo: a API pode ignorar o filtro.
+    tarefas.push(...(resposta.data ?? []).filter((t) => lote.includes(t.id)));
+  }
+  // O que o filtro não trouxe, tenta uma a uma.
+  for (const id of unicos.filter((id) => !tarefas.some((t) => t.id === id))) {
+    try {
+      const tarefa = await obterTarefa(id, CAMPOS);
+      if (tarefa?.id === id) tarefas.push(tarefa);
+    } catch {
+      /* fica em naoEncontradas */
+    }
+  }
+  const achadas = new Set(tarefas.map((t) => t.id));
+  // Mantém a ordem em que o funcionário escolheu.
+  const ordem = new Map(unicos.map((id, i) => [id, i]));
+  return {
+    tarefas: tarefas.sort((a, b) => ordem.get(a.id)! - ordem.get(b.id)!),
+    naoEncontradas: unicos.filter((id) => !achadas.has(id)),
+  };
 }

@@ -36,3 +36,18 @@ export function adicionarUnico<T>(destino: T[], item: T): void {
   const chave = JSON.stringify(item);
   if (!destino.some((existente) => JSON.stringify(existente) === chave)) destino.push(item);
 }
+
+// Texto puro a partir do HTML do Lawyertool (movimentações e prazos vêm com <p>, &nbsp; etc.).
+export function textoDeHtml(valor: unknown): string {
+  return String(valor ?? '')
+    .replace(/<\/(p|div|li|br)\s*>|<br\s*\/?>/gi, ' ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}

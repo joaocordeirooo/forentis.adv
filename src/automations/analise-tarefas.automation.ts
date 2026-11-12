@@ -10,9 +10,11 @@ import { analisarTarefa } from '@/service/analise-tarefa.service';
 import { coletarContexto } from '@/service/contexto-tarefa.service';
 import { prepararSolicitacaoCliente } from '@/service/solicitacao-cliente.service';
 import { agruparEmpresas, prepararSolicitacaoEmpresa } from '@/service/solicitacao-empresa.service';
-import { buscarTarefasPendentes } from '@/service/tarefa.service';
+import { prepararSolicitacaoIndefinida } from '@/service/solicitacao-indefinida.service';
+import { buscarTarefasPendentes, buscarTarefasPorIds } from '@/service/tarefa.service';
 import { impressaoDaTarefa, triarTarefa } from '@/service/triagem.service';
 import { dataHora } from '@/utils/data.util';
+import { origemDaTarefa } from '@/utils/origem-tarefa.util';
 
 // O fluxo completo do workflow do n8n, tarefa por tarefa.
 // Nada é enviado aqui: cada pedido vira uma solicitação aguardando a conferência do funcionário.
@@ -24,11 +26,13 @@ const MOTIVOS_DECISAO: Record<string, string> = {
 
 const EXECUCAO_TRAVADA_HORAS = 8;
 
-async function processarTarefa(tarefa: Tarefa, execucaoId: string, forcar: boolean): Promise<ResultadoTarefa> {
+// manual = tarefa escolhida a dedo na aba Tarefas: pula a triagem (o funcionário já decidiu que há o que pedir).
+async function processarTarefa(tarefa: Tarefa, execucaoId: string, forcar: boolean, manual = false): Promise<ResultadoTarefa> {
   const resultado: ResultadoTarefa = {
     tarefaId: tarefa.id,
     tarefaTitulo: tarefa.titulo,
     tipoTarefa: tarefa.tipoTarefa?.descricao ?? null,
+    setor: origemDaTarefa(tarefa).setor?.descricao ?? null,
     processoId: tarefa.processo?.id ?? null,
     clienteNome: tarefa.emitente?.nome ?? null,
     decisaoAnalise: 'erro_contexto',
@@ -75,7 +79,7 @@ async function processarTarefa(tarefa: Tarefa, execucaoId: string, forcar: boole
 
   // Tipos com triagem: a IA confere primeiro se há pedido externo (bem mais barato que a análise completa).
   let triagem: { envolve: boolean; motivo: string } | null = null;
-  if (tipoMonitorado(tarefa.tipoTarefa?.id)?.triagem) {
+  if (!manual && tipoMonitorado(tarefa.tipoTarefa?.id)?.triagem) {
     try {
       triagem = await triarTarefa(contexto);
     } catch (erro) {
@@ -121,8 +125,21 @@ async function analisarEPreparar(
   }
 
   if (!analise.pendencias.length) resultado.motivos.push('A IA indicou preparar_pendencias, mas não listou nenhuma pendência.');
-  for (const p of analise.pendencias_indefinidas) {
-    resultado.motivos.push(`Pendência sem destinatário definido (não tratada): ${p.documento || 'sem descrição'}${p.periodo ? ` — ${p.periodo}` : ''}.`);
+  // Sem destinatário: vai para a fila como "não classificada" (o funcionário diz se é do cliente ou de qual empresa).
+  if (analise.pendencias_indefinidas.length) {
+    try {
+      const id = await prepararSolicitacaoIndefinida(contexto, analise, analise.pendencias_indefinidas, execucaoId);
+      resultado.solicitacoes.push(id);
+      resultado.observacoes.push(
+        `${analise.pendencias_indefinidas.length} pendência(s) sem destinatário foram para a conferência (classificar): ` +
+          analise.pendencias_indefinidas.map((p) => `${p.documento || 'sem descrição'}${p.periodo ? ` — ${p.periodo}` : ''}`).join('; ') + '.',
+      );
+    } catch (erro) {
+      for (const p of analise.pendencias_indefinidas) {
+        resultado.motivos.push(`Pendência sem destinatário definido (não tratada): ${p.documento || 'sem descrição'}${p.periodo ? ` — ${p.periodo}` : ''}.`);
+      }
+      resultado.motivos.push(`Falha ao guardar as pendências sem destinatário: ${(erro as Error).message}`);
+    }
   }
 
   // Cliente.
@@ -160,7 +177,7 @@ async function analisarEPreparar(
 // Cria o registro da execução (e impede duas execuções ao mesmo tempo).
 export async function criarExecucao(
   filtroTarefaId: number | null,
-  opcoes: { forcar?: boolean; origem?: 'manual' | 'agenda' } = {},
+  opcoes: { forcar?: boolean; origem?: 'manual' | 'agenda'; tarefaIds?: number[] } = {},
 ): Promise<Execucao> {
   const limite = Date.now() - EXECUCAO_TRAVADA_HORAS * 3_600_000;
   const rodando = (await listarExecucoes()).find((e) => e.status === 'em_andamento' && Date.parse(e.iniciadaEm) > limite);
@@ -173,8 +190,9 @@ export async function criarExecucao(
     finalizadaEm: null,
     modoTeste: config.automacao.modoTeste,
     filtroTarefaId,
+    tarefaIds: opcoes.tarefaIds?.length ? [...new Set(opcoes.tarefaIds)] : null,
     origem: opcoes.origem ?? 'manual',
-    forcar: opcoes.forcar ?? Boolean(filtroTarefaId), // uma tarefa escolhida a dedo é sempre reanalisada
+    forcar: opcoes.forcar ?? Boolean(filtroTarefaId || opcoes.tarefaIds?.length), // tarefa escolhida a dedo é sempre reanalisada
     tarefasEncontradas: 0,
     tarefasProcessadas: 0,
     resultados: [],
@@ -187,6 +205,10 @@ export async function criarExecucao(
 // Executa a análise de todas as tarefas pendentes (ou de uma só). Nunca lança erro.
 export async function executarAnalise(execucao: Execucao): Promise<void> {
   try {
+    if (execucao.tarefaIds?.length) {
+      await executarSelecionadas(execucao, execucao.tarefaIds);
+      return;
+    }
     const { tarefas: encontradas, buscaIncompleta } = await buscarTarefasPendentes(true);
     let tarefas = execucao.filtroTarefaId ? encontradas.filter((t) => t.id === execucao.filtroTarefaId) : encontradas;
     if (execucao.filtroTarefaId && !tarefas.length) {
@@ -217,4 +239,32 @@ export async function executarAnalise(execucao: Execucao): Promise<void> {
       erro: (erro as Error).message,
     }));
   }
+}
+
+// Tarefas escolhidas na aba Tarefas: de qualquer setor/fluxo, sem o limite do modo teste
+// (nada é enviado aqui: tudo vai para a conferência).
+async function executarSelecionadas(execucao: Execucao, ids: number[]): Promise<void> {
+  const { tarefas, naoEncontradas } = await buscarTarefasPorIds(ids);
+  await atualizarExecucao(execucao.id, (e) => ({ ...e, tarefasEncontradas: ids.length }));
+
+  for (const id of naoEncontradas) {
+    const resultado: ResultadoTarefa = {
+      tarefaId: id, tarefaTitulo: null, tipoTarefa: null, setor: null, processoId: null, clienteNome: null,
+      decisaoAnalise: 'erro_contexto', resumoAnalise: '', tratada: false,
+      motivos: ['Tarefa não encontrada no Lawyertool.'], solicitacoes: [], observacoes: [],
+    };
+    await atualizarExecucao(execucao.id, (e) => ({ ...e, tarefasProcessadas: e.tarefasProcessadas + 1, resultados: [...e.resultados, resultado] }));
+  }
+
+  for (const tarefa of tarefas) {
+    console.log(`[automação] tarefa selecionada ${tarefa.id} — ${tarefa.titulo ?? ''}`);
+    const resultado = await processarTarefa(tarefa, execucao.id, true, true);
+    await atualizarExecucao(execucao.id, (e) => ({
+      ...e,
+      tarefasProcessadas: e.tarefasProcessadas + 1,
+      resultados: [...e.resultados, resultado],
+    }));
+  }
+
+  await atualizarExecucao(execucao.id, (e) => ({ ...e, status: 'concluida', finalizadaEm: new Date().toISOString() }));
 }

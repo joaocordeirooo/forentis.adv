@@ -37,11 +37,11 @@ export async function concluirSolicitacaoEmpresa(s: Solicitacao, funcionario: st
     throw new AppError('Complete a identificação do cliente no texto do e-mail antes de concluir.', 422);
   }
 
-  const anexos: { nome: string; conteudo: Buffer }[] = [];
+  const anexos: { nome: string; conteudo: Buffer; mimeType?: string }[] = [];
   for (const anexo of s.anexos.filter((a) => a.incluir)) {
     const conteudo = await lerAnexo(s.id, anexo.nomeArquivo);
     if (!conteudo) throw new AppError(`Anexo não encontrado na pasta de dados: ${anexo.nomeArquivo}`, 500);
-    anexos.push({ nome: anexo.nomeArquivo, conteudo });
+    anexos.push({ nome: anexo.nomeArquivo, conteudo, mimeType: anexo.mimeType });
   }
 
   let enviado = false;

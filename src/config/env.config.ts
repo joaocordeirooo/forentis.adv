@@ -98,6 +98,11 @@ export const config = {
     return {
       // false = "Material coletado" só simula nas tarefas reais (não inicia nada no Lawyertool).
       executarLawyertool: booleano('ATENDIMENTO_EXECUTAR_LAWYERTOOL', false),
+      // Usuários do Lawyertool cujas tarefas podem ser iniciadas/concluídas pelo Forentis (fase de teste). Ex.: "115,203".
+      usuariosLiberados: opcional('ATENDIMENTO_USUARIOS_LIBERADOS', '115')
+        .split(',')
+        .map((v) => Number(v.trim()))
+        .filter((v) => Number.isInteger(v) && v > 0),
       // De onde vem a posição do carro: "simulado" por enquanto; depois, o rastreador real.
       rastreador: opcional('RASTREADOR_PROVEDOR', 'simulado'),
     };

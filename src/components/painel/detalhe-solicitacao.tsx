@@ -1,8 +1,8 @@
 'use client';
 
 import { AnimatePresence, motion } from 'motion/react';
-import { Ban, Building2, ChevronDown, ExternalLink, FileText, Info, Loader2, MessageCircle, Save, Send, ShieldAlert } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Ban, ChevronDown, ExternalLink, FileText, Info, Loader2, Paperclip, Save, Send, ShieldAlert, Trash2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { BotaoBrilho } from '@/components/ui/botao-brilho';
 import { PainelLateral } from '@/components/ui/painel-lateral';
 import { Etiqueta, SeloStatus } from '@/components/ui/selo-status';
@@ -10,7 +10,9 @@ import { api } from '@/lib/api-client';
 import { dataHora } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 import type { Solicitacao } from '@/models/solicitacao.model';
+import { ClassificarPendencias } from './classificar-pendencias';
 import { PreviaEmail, PreviaWhatsApp } from './previas';
+import { tituloSolicitacao, VISUAL_TIPO } from './tipo-solicitacao';
 
 const LIMITE_WHATSAPP = 250;
 const ABERTOS = ['aguardando_conferencia', 'bloqueada', 'falha_envio'];
@@ -54,6 +56,7 @@ export function DetalheSolicitacao({ id, aoFechar, aoMudar }: { id: string | nul
   const [motivoDescarte, setMotivoDescarte] = useState('');
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
+  const seletorArquivo = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setFuncionario(lerFuncionario());
@@ -78,6 +81,9 @@ export function DetalheSolicitacao({ id, aoFechar, aoMudar }: { id: string | nul
   if (!id) return <PainelLateral aberto={false} aoFechar={aoFechar} titulo="">{null}</PainelLateral>;
 
   const cliente = s?.tipo === 'cliente';
+  const indefinida = s?.tipo === 'indefinida';
+  const visual = VISUAL_TIPO[s?.tipo ?? 'cliente'];
+  const IconeTipo = visual.icone;
   const aberta = s ? ABERTOS.includes(s.status) : false;
   const excedeu = cliente && texto.length > LIMITE_WHATSAPP;
   const alterado = s && (
@@ -98,6 +104,8 @@ export function DetalheSolicitacao({ id, aoFechar, aoMudar }: { id: string | nul
     try {
       const atualizada = await acao();
       setS(atualizada);
+      // Anexos novos entram marcados; os que já estavam mantêm a escolha da tela.
+      setAnexos((atual) => Object.fromEntries(atualizada.anexos.map((a) => [a.id, atual[a.id] ?? a.incluir])));
       setConfirmando(null);
       setMensagem({ tipo: 'ok', texto: sucesso });
       aoMudar();
@@ -118,6 +126,22 @@ export function DetalheSolicitacao({ id, aoFechar, aoMudar }: { id: string | nul
       ...(s!.anexos.some((a) => anexos[a.id] !== a.incluir) ? { anexos: s!.anexos.map((a) => ({ id: a.id, incluir: anexos[a.id] })) } : {}),
     }), 'Alterações salvas.');
 
+  async function anexarArquivos(arquivos: FileList | null) {
+    if (!arquivos?.length || !s) return;
+    for (const arquivo of Array.from(arquivos)) {
+      await executar('anexar', () => api.anexar(s.id, arquivo, funcionario.trim()), `${arquivo.name} anexado.`);
+    }
+    if (seletorArquivo.current) seletorArquivo.current.value = '';
+  }
+
+  // Classificação: o painel recebe a solicitação já atualizada.
+  function aposClassificar(atualizada: Solicitacao) {
+    salvarFuncionario(funcionario.trim());
+    setS(atualizada);
+    setMensagem({ tipo: 'ok', texto: atualizada.status === 'concluida' ? 'Todas as pendências classificadas.' : 'Pendência classificada.' });
+    aoMudar();
+  }
+
   return (
     <PainelLateral
       aberto={Boolean(id)}
@@ -125,15 +149,17 @@ export function DetalheSolicitacao({ id, aoFechar, aoMudar }: { id: string | nul
       titulo={
         s ? (
           <div className="flex items-center gap-3">
-            <span className={cn('grid h-10 w-10 shrink-0 place-items-center rounded-xl', cliente ? 'bg-emerald-500/15 text-emerald-300' : 'bg-indigo-500/15 text-indigo-300')}>
-              {cliente ? <MessageCircle className="h-5 w-5" /> : <Building2 className="h-5 w-5" />}
+            <span className={cn('grid h-10 w-10 shrink-0 place-items-center rounded-xl', visual.classe)}>
+              <IconeTipo className="h-5 w-5" />
             </span>
             <div className="min-w-0">
-              <p className="truncate font-semibold text-white">{cliente ? s.clienteNome : s.empresa}</p>
+              <p className="truncate font-semibold text-white">{tituloSolicitacao(s)}</p>
+              {!cliente && s.clienteNome && <p className="truncate text-xs text-zinc-500">Cliente: {s.clienteNome}</p>}
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <SeloStatus status={s.status} />
                 <Etiqueta>Tarefa #{s.tarefaId}</Etiqueta>
                 <Etiqueta>Processo {s.processoId}</Etiqueta>
+                {s.origem?.setor && <Etiqueta>{s.origem.setor.descricao}</Etiqueta>}
               </div>
             </div>
           </div>
@@ -157,7 +183,15 @@ export function DetalheSolicitacao({ id, aoFechar, aoMudar }: { id: string | nul
             </div>
           )}
 
-          {cliente ? (
+          {indefinida ? (
+            <ClassificarPendencias
+              solicitacao={s}
+              aberta={aberta}
+              funcionario={funcionario}
+              aoAtualizar={aposClassificar}
+              aoErro={(texto) => setMensagem({ tipo: 'erro', texto })}
+            />
+          ) : cliente ? (
             <div className="grid gap-4 md:grid-cols-2">
               <PreviaWhatsApp nome={s.destinatario.nome ?? s.clienteNome ?? 'Cliente'} numero={telefoneCliente} texto={texto} modoTeste={s.modoTeste} />
               <div className="space-y-3">
@@ -178,6 +212,9 @@ export function DetalheSolicitacao({ id, aoFechar, aoMudar }: { id: string | nul
           ) : (
             <div className="space-y-3">
               <PreviaEmail para={s.modoTeste ? 'endereço de teste (modo teste)' : email} assunto={assunto} anexos={Object.values(anexos).filter(Boolean).length} />
+              {typeof s.detalhes?.cnpj === 'string' && s.detalhes.cnpj && (
+                <p className="text-xs text-zinc-400">CNPJ: <span className="font-mono text-zinc-200">{s.detalhes.cnpj}</span></p>
+              )}
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-xs font-medium text-zinc-400">E-mail da empresa</label>
@@ -193,24 +230,50 @@ export function DetalheSolicitacao({ id, aoFechar, aoMudar }: { id: string | nul
               {texto.includes('a completar na conferência') && (
                 <p className="text-xs text-amber-300">Complete a identificação do cliente no texto antes de concluir.</p>
               )}
-              {s.anexos.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-zinc-400">Anexos recortados</p>
-                  {s.anexos.map((a) => (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-medium text-zinc-400">Anexos ({Object.values(anexos).filter(Boolean).length} no envio)</p>
+                  {aberta && (
+                    <>
+                      <input ref={seletorArquivo} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx" className="hidden" onChange={(e) => anexarArquivos(e.target.files)} />
+                      <button
+                        onClick={() => (funcionario.trim().length < 2 ? setMensagem({ tipo: 'erro', texto: 'Informe seu nome antes.' }) : seletorArquivo.current?.click())}
+                        disabled={Boolean(ocupado)}
+                        className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs text-indigo-200 ring-1 ring-indigo-500/30 hover:bg-indigo-500/10 disabled:opacity-50"
+                      >
+                        {ocupado === 'anexar' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />} Anexar arquivo
+                      </button>
+                    </>
+                  )}
+                </div>
+                {!s.anexos.length && <p className="rounded-xl border border-dashed border-white/10 px-3 py-3 text-center text-xs text-zinc-500">Nenhum anexo. Use “Anexar arquivo” para incluir procuração, CTPS ou outro documento.</p>}
+                {s.anexos.map((a) => {
+                  const manual = a.origem === 'funcionario';
+                  return (
                     <div key={a.id} className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/30 px-3 py-2">
                       <input type="checkbox" checked={anexos[a.id] ?? false} disabled={!aberta} onChange={(e) => setAnexos({ ...anexos, [a.id]: e.target.checked })} className="h-4 w-4 accent-indigo-500" />
-                      <FileText className="h-4 w-4 text-indigo-300" />
+                      {manual ? <Paperclip className="h-4 w-4 text-sky-300" /> : <FileText className="h-4 w-4 text-indigo-300" />}
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm text-zinc-200">{a.tipo.replace(/_/g, ' ')} · págs. {a.paginas.join(', ')}</p>
-                        <p className="truncate text-xs text-zinc-500">de {a.arquivoOrigemNome}</p>
+                        <p className="truncate text-sm text-zinc-200">{manual ? a.arquivoOrigemNome ?? a.nomeArquivo : `${a.tipo.replace(/_/g, ' ')} · págs. ${a.paginas.join(', ')}`}</p>
+                        <p className="truncate text-xs text-zinc-500">{manual ? `anexado por ${a.anexadoPor ?? '—'}` : `recorte de ${a.arquivoOrigemNome}`}</p>
                       </div>
-                      <a href={api.urlAnexo(s.id, a.id)} target="_blank" rel="noreferrer" className="rounded-lg p-1.5 text-zinc-400 hover:bg-white/10 hover:text-white" title="Abrir PDF">
+                      <a href={api.urlAnexo(s.id, a.id)} target="_blank" rel="noreferrer" className="rounded-lg p-1.5 text-zinc-400 hover:bg-white/10 hover:text-white" title="Abrir arquivo">
                         <ExternalLink className="h-4 w-4" />
                       </a>
+                      {manual && aberta && (
+                        <button
+                          onClick={() => executar('remover', () => api.removerAnexo(s.id, a.id, funcionario.trim()), 'Anexo removido.')}
+                          disabled={Boolean(ocupado)}
+                          className="rounded-lg p-1.5 text-zinc-500 hover:bg-rose-500/10 hover:text-rose-300 disabled:opacity-50"
+                          title="Remover anexo"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
-                  ))}
-                </div>
-              )}
+                  );
+                })}
+              </div>
             </div>
           )}
 
@@ -218,7 +281,7 @@ export function DetalheSolicitacao({ id, aoFechar, aoMudar }: { id: string | nul
             <p className="text-sm leading-relaxed text-zinc-300">{s.resumo || '—'}</p>
           </Secao>
 
-          <Secao titulo={`Pendências (${s.pendencias.length})`}>
+          {!indefinida && <Secao titulo={`Pendências (${s.pendencias.length})`}>
             <ul className="space-y-3">
               {s.pendencias.map((p, i) => (
                 <li key={i} className="rounded-xl border border-white/5 bg-black/20 p-3">
@@ -235,7 +298,7 @@ export function DetalheSolicitacao({ id, aoFechar, aoMudar }: { id: string | nul
                 </li>
               ))}
             </ul>
-          </Secao>
+          </Secao>}
 
           <Secao titulo="Histórico" inicial={false}>
             <ol className="relative space-y-4 border-l border-white/10 pl-5">
@@ -301,7 +364,7 @@ export function DetalheSolicitacao({ id, aoFechar, aoMudar }: { id: string | nul
                 Descartar
               </button>
             )}
-            {confirmando === 'concluir' ? (
+            {indefinida ? null : confirmando === 'concluir' ? (
               <BotaoBrilho variante="sucesso" desativado={Boolean(ocupado) || Boolean(alterado) || (s.bloqueios.length > 0 && !ignorar)} onClick={() => executar('concluir', () => api.concluir(s.id, funcionario.trim(), ignorar), cliente ? 'Mensagem processada.' : 'E-mail processado.')}>
                 {ocupado === 'concluir' ? <><Loader2 className="h-4 w-4 animate-spin" /> Enviando…</> : <><Send className="h-4 w-4" /> Confirmar envio</>}
               </BotaoBrilho>

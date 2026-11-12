@@ -1,6 +1,6 @@
 // Tarefas que o atendente externo resolve na rua (coletar assinatura, buscar CTPS, entregar concessão...).
 
-export type SituacaoAtendimento = 'pendente' | 'iniciada';
+export type SituacaoAtendimento = 'pendente' | 'iniciada' | 'concluida';
 
 export interface TarefaAtendimento {
   id: string; // "lt-5222" (Lawyertool) ou "ex-1" (exemplo)
@@ -18,12 +18,17 @@ export interface TarefaAtendimento {
   situacao: SituacaoAtendimento;
   iniciadaEm: string | null;
   iniciadaPor: string | null;
+  concluidaEm?: string | null; // data final real (tarefas do Lawyertool)
+  tarefaFinal?: boolean | null; // tipo "tarefa final": pode concluir sem criar próxima tarefa (false = só pelo Lawyertool)
 }
 
 export interface Atendente {
-  id: string;
+  id: string; // "teste" (fictício) ou "u-115" (usuário 115 do Lawyertool)
   nome: string;
   ficticio: boolean;
+  usuarioId?: number | null; // id do usuário no Lawyertool
+  liberado?: boolean; // pode iniciar/concluir no Lawyertool (fase de teste: só os liberados no .env)
+  abertas?: number; // pendentes + iniciadas no período
 }
 
 export interface ResultadoMaterialColetado {

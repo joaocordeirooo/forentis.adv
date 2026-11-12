@@ -38,7 +38,7 @@ export async function perguntar(dados: { conversaId?: string; pessoa?: string; t
     instrucoes,
     mensagens: conversa.mensagens.slice(-HISTORICO).map((m) => ({ role: m.papel === 'pessoa' ? 'user' : 'assistant', content: m.texto })),
     ferramentas: FERRAMENTAS_DEX,
-    executar: executarFerramentaDex,
+    executar: (nome, args) => executarFerramentaDex(nome, args, { pessoa: conversa.pessoa }),
   });
 
   const resposta = { papel: 'dex' as const, texto, em: new Date().toISOString(), consultas: ferramentasUsadas };

@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '@/config/env.config';
 
@@ -18,4 +18,8 @@ export async function lerAnexo(solicitacaoId: string, nomeArquivo: string): Prom
   } catch {
     return null;
   }
+}
+
+export async function apagarAnexo(solicitacaoId: string, nomeArquivo: string): Promise<void> {
+  await rm(path.join(pasta(solicitacaoId), path.basename(nomeArquivo)), { force: true });
 }

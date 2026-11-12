@@ -4,6 +4,7 @@ export interface ResultadoTarefa {
   tarefaId: number;
   tarefaTitulo: string | null;
   tipoTarefa: string | null;
+  setor?: string | null;
   processoId: number | null;
   clienteNome: string | null;
   decisaoAnalise: string;
@@ -20,7 +21,8 @@ export interface Execucao {
   iniciadaEm: string;
   finalizadaEm: string | null;
   modoTeste: boolean;
-  filtroTarefaId: number | null;
+  filtroTarefaId: number | null; // (antigo) uma tarefa só
+  tarefaIds?: number[] | null; // tarefas escolhidas na aba Tarefas; null/ausente = todas as pendentes monitoradas
   origem: 'manual' | 'agenda';
   forcar: boolean; // true = reanalisa mesmo as tarefas sem novidade
   tarefasEncontradas: number;

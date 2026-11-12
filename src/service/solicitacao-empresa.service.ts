@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { origemDaTarefa } from '@/utils/origem-tarefa.util';
 import { config } from '@/config/env.config';
 import type { AnaliseTarefa, Pendencia } from '@/models/analise.model';
 import type { ContextoTarefa } from '@/models/contexto-tarefa.model';
@@ -36,7 +37,7 @@ export function agruparEmpresas(pendencias: Pendencia[]) {
   return { ativos, acompanhamento };
 }
 
-function textoPedido(cliente: string | null, pedidos: { documento: string; periodo: string | null; orientacoes?: string | null }[]): string {
+export function textoPedido(cliente: string | null, pedidos: { documento: string; periodo: string | null; orientacoes?: string | null }[]): string {
   if (!pedidos.length) return '';
   const itens = pedidos.map((p) => {
     const ehPpp = /\bPPP\b|perfil profissiogr[aá]fico/i.test(p.documento);
@@ -213,6 +214,7 @@ export async function prepararSolicitacaoEmpresa(
     processoId: contexto.processo.id,
     clienteNome: cliente,
     responsavel: contexto.tarefa.usuarioResponsavel?.nome ?? null,
+    origem: origemDaTarefa(contexto.tarefa),
     empresa: nomeEmpresa,
     empresaChave: chave,
     assinatura,

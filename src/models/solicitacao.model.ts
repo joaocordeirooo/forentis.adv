@@ -1,6 +1,23 @@
 import type { Pendencia } from './analise.model';
 
-export type TipoSolicitacao = 'cliente' | 'empresa';
+// indefinida = pendências que a IA não conseguiu dizer se são do cliente ou de uma empresa;
+// o funcionário classifica cada uma (vira pedido ao cliente, a uma empresa, ou é ignorada).
+export type TipoSolicitacao = 'cliente' | 'empresa' | 'indefinida';
+
+// Setor/fluxo/tipo da tarefa no Lawyertool (a visão geral agrupa por setor).
+export interface OrigemTarefa {
+  setor: { id: number; descricao: string } | null;
+  fluxo: { id: number; descricao: string } | null;
+  tipoTarefa: { id: number; descricao: string } | null;
+}
+
+export interface ClassificacaoPendencia {
+  destino: 'cliente' | 'empresa' | 'ignorar';
+  empresa: string | null;
+  solicitacaoId: string | null; // pedido para onde a pendência foi
+  por: string;
+  em: string;
+}
 
 export type StatusSolicitacao =
   | 'aguardando_conferencia' // pronta: o funcionário confere e conclui
@@ -15,9 +32,12 @@ export const STATUS_ABERTOS: StatusSolicitacao[] = ['aguardando_conferencia', 'b
 export interface AnexoSolicitacao {
   id: string;
   nomeArquivo: string;
-  tipo: string; // ctps_vinculo, procuracao...
+  tipo: string; // ctps_vinculo, procuracao... (anexado pelo funcionário: 'anexo_manual')
   paginas: number[];
-  arquivoOrigemId: number;
+  arquivoOrigemId: number | null; // null = anexado pelo funcionário
+  origem?: 'recorte' | 'funcionario'; // ausente = recorte (registros antigos)
+  mimeType?: string; // ausente = application/pdf
+  anexadoPor?: string | null;
   arquivoOrigemNome: string | null;
   finalidade: string;
   tamanhoBytes: number;
@@ -44,6 +64,7 @@ export interface Solicitacao {
   processoId: number;
   clienteNome: string | null;
   responsavel: string | null;
+  origem?: OrigemTarefa; // ausente em solicitações antigas
 
   // Empresa: chave normalizada do nome (usada nas travas e no comentário).
   empresa: string | null;
@@ -61,7 +82,7 @@ export interface Solicitacao {
   texto: string; // cliente: {Documentos_Pendentes}; empresa: corpo do e-mail
 
   resumo: string;
-  pendencias: Pendencia[];
+  pendencias: (Pendencia & { classificacao?: ClassificacaoPendencia })[];
   confianca: string | null;
   bloqueios: string[]; // impedem concluir sem ignorarBloqueios
   avisos: string[]; // pontos de conferência que não impedem

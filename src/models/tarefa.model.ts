@@ -10,6 +10,7 @@ export interface Tarefa {
   usuarioResponsavel?: { nome: string } | null;
   tipoTarefa?: { id: number; descricao: string } | null;
   fluxo?: { id: number; descricao?: string } | null;
+  setor?: { id: number; descricao?: string } | null;
 }
 
 // O que o service devolve: as tarefas e como foi a busca.

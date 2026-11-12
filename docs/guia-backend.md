@@ -80,6 +80,8 @@ Se o `.env` tiver `API_KEY`, informe a chave no ícone de chave no canto superio
 - **Início**: resumo do dia por estação, links rápidos (editáveis, guardados no navegador) e o chat da DEX.
 - **DEX**: assistente interna do escritório. Responde consultando o sistema por ferramentas **só de leitura**
   (panorama, solicitações, execuções, tarefas, atendimento da semana, contatos de empresas e este guia).
+  Consulta processos do Lawyertool (buscar_processo e andamento_processo, em src/service/dex-processos.service.ts):
+  dados do processo, últimas movimentações, prazos, eventos e publicações — só GET, sem CPF/telefone/e-mail.
   Não envia, não conclui e não altera nada. As conversas ficam em `.dados/conversas-dex.json`.
   A personalidade e as regras dela estão em `src/prompts/dex.md`; o modelo em `OPENAI_MODELO_DEX`.
 - Trava dos 3 envios ao cliente: a automação conta os comentários "Situação: ENVIADO" de contato com o cliente

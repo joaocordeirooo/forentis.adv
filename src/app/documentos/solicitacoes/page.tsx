@@ -1,5 +1,5 @@
-import { FilaSolicitacoes } from '@/components/painel/fila-solicitacoes';
+import { SolicitacoesCarregador } from '@/components/painel/solicitacoes-carregador';
 
 export default function Pagina() {
-  return <FilaSolicitacoes />;
+  return <SolicitacoesCarregador />;
 }

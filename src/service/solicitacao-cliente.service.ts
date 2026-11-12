@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { origemDaTarefa } from '@/utils/origem-tarefa.util';
 import { config } from '@/config/env.config';
 import { obterEmitente } from '@/integrations/lawyertool.integration';
 import type { AnaliseTarefa, Pendencia } from '@/models/analise.model';
@@ -136,6 +137,7 @@ export async function prepararSolicitacaoCliente(
     processoId: processo.id,
     clienteNome: nomeCliente,
     responsavel: tarefa.usuarioResponsavel?.nome ?? null,
+    origem: origemDaTarefa(tarefa),
     empresa: null,
     empresaChave: null,
     assinatura,

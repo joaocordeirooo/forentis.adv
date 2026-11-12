@@ -11,5 +11,11 @@ export const TIPOS_ATENDIMENTO = [
   { setor: 'Setor de Cálculos - Ações Novas', fluxoId: 54, tipos: [{ id: 303, descricao: 'Retorno Ação Nova - Setor de Cálculo' }] },
 ];
 
+export const IDS_TIPOS_ATENDIMENTO = TIPOS_ATENDIMENTO.flatMap((s) => s.tipos.map((t) => t.id));
+
+export function setorDoTipoAtendimento(tipoId: number | null | undefined): string | null {
+  return TIPOS_ATENDIMENTO.find((s) => s.tipos.some((t) => t.id === tipoId))?.setor ?? null;
+}
+
 // Atendente fictício para os testes (não existe no Lawyertool).
 export const ATENDENTE_TESTE: Atendente = { id: 'teste', nome: 'Rafael Moreira (fictício)', ficticio: true };

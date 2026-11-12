@@ -54,6 +54,17 @@ async function chamar<T>(caminho: string, opcoes: { metodo?: string; corpo?: unk
   return dados as T;
 }
 
+// Upload (multipart): o navegador monta o Content-Type com o boundary.
+async function enviarArquivo<T>(caminho: string, arquivo: File, por: string): Promise<T> {
+  const corpo = new FormData();
+  corpo.append('arquivo', arquivo);
+  corpo.append('por', por);
+  const resposta = await fetch(caminho, { method: 'POST', headers: { 'x-api-key': lerChaveApi() }, body: corpo, cache: 'no-store' });
+  const dados = await resposta.json().catch(() => ({}));
+  if (!resposta.ok) throw new ErroApi(dados.erro ?? `Erro ${resposta.status}`, resposta.status, dados.detalhes);
+  return dados as T;
+}
+
 export interface Saude {
   ok: boolean;
   modoTeste: boolean;
@@ -92,9 +103,10 @@ export interface ResumoInicio {
 
 export interface SemanaAtendimento {
   atendentes: Atendente[];
-  atendente: Atendente;
+  atendente: Atendente | null;
   semana: { inicio: string; fim: string; diasUteis: string[] };
   gravaNoLawyertool: boolean;
+  buscaIncompleta?: boolean;
   tarefas: TarefaAtendimento[];
 }
 
@@ -120,6 +132,13 @@ export const api = {
   execucao: (id: string) => chamar<ExecucaoCompleta>(`/api/analises/${id}`),
   iniciarAnalise: (tarefaId?: number, forcar = false) =>
     chamar<{ execucaoId: string }>('/api/analises', { metodo: 'POST', corpo: { ...(tarefaId ? { tarefaId } : {}), ...(forcar ? { forcar } : {}) } }),
+  executarSelecionadas: (tarefaIds: number[]) =>
+    chamar<{ execucaoId: string }>('/api/analises', { metodo: 'POST', corpo: { tarefaIds } }),
+  classificar: (id: string, dados: { por: string; indice: number; destino: 'cliente' | 'empresa' | 'ignorar'; empresa?: string }) =>
+    chamar<Solicitacao>(`/api/solicitacoes/${id}/classificar`, { metodo: 'POST', corpo: dados }),
+  anexar: (id: string, arquivo: File, por: string) => enviarArquivo<Solicitacao>(`/api/solicitacoes/${id}/anexos`, arquivo, por),
+  removerAnexo: (id: string, anexoId: string, por: string) =>
+    chamar<Solicitacao>(`/api/solicitacoes/${id}/anexos/${anexoId}?por=${encodeURIComponent(por)}`, { metodo: 'DELETE' }),
   solicitacoes: () => chamar<Solicitacao[]>('/api/solicitacoes'),
   solicitacao: (id: string) => chamar<Solicitacao>(`/api/solicitacoes/${id}`),
   editar: (id: string, dados: Record<string, unknown>) =>
@@ -129,7 +148,15 @@ export const api = {
   descartar: (id: string, funcionario: string, motivo: string) =>
     chamar<Solicitacao>(`/api/solicitacoes/${id}/descartar`, { metodo: 'POST', corpo: { funcionario, motivo } }),
   urlAnexo: (id: string, anexoId: string) => `/api/solicitacoes/${id}/anexos/${anexoId}`,
-  atendimento: (atendenteId: string) => chamar<SemanaAtendimento>(`/api/atendimento/tarefas?atendenteId=${atendenteId}`),
+  atendimento: (filtro: { atendenteId?: string; semana?: string; inicio?: string; fim?: string; atualizar?: boolean } = {}) => {
+    const p = new URLSearchParams();
+    if (filtro.atendenteId) p.set('atendenteId', filtro.atendenteId);
+    if (filtro.semana) p.set('semana', filtro.semana);
+    if (filtro.inicio) p.set('inicio', filtro.inicio);
+    if (filtro.fim) p.set('fim', filtro.fim);
+    if (filtro.atualizar) p.set('atualizar', '1');
+    return chamar<SemanaAtendimento>(`/api/atendimento/tarefas?${p}`);
+  },
   materialColetado: (atendenteId: string, tarefas: string[]) =>
     chamar<{ resultados: ResultadoMaterialColetado[]; iniciadas: number }>('/api/atendimento/material-coletado', { metodo: 'POST', corpo: { atendenteId, tarefas } }),
   inicio: () => chamar<ResumoInicio>('/api/inicio'),

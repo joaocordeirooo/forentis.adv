@@ -6,7 +6,7 @@ export interface EmailParaEnviar {
   para: string;
   assunto: string;
   texto: string;
-  anexos: { nome: string; conteudo: Buffer }[];
+  anexos: { nome: string; conteudo: Buffer; mimeType?: string }[];
 }
 
 export async function enviarEmail(email: EmailParaEnviar): Promise<string> {
@@ -27,7 +27,7 @@ export async function enviarEmail(email: EmailParaEnviar): Promise<string> {
       attachments: email.anexos.map((anexo) => ({
         filename: anexo.nome,
         content: anexo.conteudo,
-        contentType: 'application/pdf',
+        contentType: anexo.mimeType ?? 'application/pdf',
       })),
     });
     return resultado.messageId;

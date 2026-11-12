@@ -1,9 +1,11 @@
 'use client';
 
-import { Bot, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Filter, FilterX, Loader2, Minus, Play, Plus, RefreshCw, Search, X } from 'lucide-react';
+import { Bot, Filter, FilterX, Loader2, Minus, Play, Plus, RefreshCw, Search, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useDeferredValue, useMemo, useState, type ReactNode } from 'react';
 import { AvisoErro } from '@/components/ui/aviso-erro';
+import { Campo, estiloCampo, IntervaloDatas, SeletorMultiplo } from '@/components/ui/campos-filtro';
+import { Paginacao } from '@/components/ui/paginacao';
 import { Esqueleto } from '@/components/ui/esqueleto';
 import { useConsulta } from '@/hooks/use-consulta';
 import { api } from '@/lib/api-client';
@@ -108,89 +110,8 @@ function dataBr(valor?: string | null): string {
 
 // ---- Campos ----
 
-const estiloCampo = 'w-full rounded-xl border border-white/10 bg-zinc-900/80 px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-violet-500 disabled:cursor-not-allowed disabled:opacity-50';
-
-function Campo({ rotulo, children }: { rotulo: string; children: ReactNode }) {
-  return (
-    <label className="block min-w-0">
-      <span className="mb-1 block text-xs text-zinc-400">{rotulo}</span>
-      {children}
-    </label>
-  );
-}
-
-function IntervaloDatas({ rotulo, de, ate, aoMudar }: { rotulo: string; de: string; ate: string; aoMudar: (de: string, ate: string) => void }) {
-  return (
-    <div className="min-w-0">
-      <span className="mb-1 flex items-center gap-1 text-xs text-zinc-400">
-        <CalendarDays className="h-3 w-3" /> {rotulo}
-      </span>
-      <div className="grid grid-cols-2 gap-2">
-        <input type="date" aria-label={`${rotulo} — início`} value={de} max={ate || undefined} onChange={(e) => aoMudar(e.target.value, ate)} className={cn(estiloCampo, 'scheme-dark')} />
-        <input type="date" aria-label={`${rotulo} — fim`} value={ate} min={de || undefined} onChange={(e) => aoMudar(de, e.target.value)} className={cn(estiloCampo, 'scheme-dark')} />
-      </div>
-    </div>
-  );
-}
-
 function SeletorSituacoes({ valor, aoMudar, opcoes }: { valor: SituacaoTarefa[]; aoMudar: (v: SituacaoTarefa[]) => void; opcoes: readonly SituacaoTarefa[] }) {
-  const [aberto, setAberto] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!aberto) return;
-    const fora = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && setAberto(false);
-    const tecla = (e: KeyboardEvent) => e.key === 'Escape' && setAberto(false);
-    document.addEventListener('mousedown', fora);
-    document.addEventListener('keydown', tecla);
-    return () => {
-      document.removeEventListener('mousedown', fora);
-      document.removeEventListener('keydown', tecla);
-    };
-  }, [aberto]);
-
-  const texto = !valor.length ? 'Todas' : valor.length === 1 ? ROTULO_SITUACAO[valor[0]] : `${valor.length} itens selecionados`;
-
-  return (
-    <div ref={ref} className="relative">
-      <button type="button" onClick={() => setAberto((a) => !a)} className={cn(estiloCampo, 'flex items-center justify-between gap-2 text-left')} aria-expanded={aberto}>
-        <span className="truncate">{texto}</span>
-        <span className="flex shrink-0 items-center gap-1 text-zinc-500">
-          {valor.length > 0 && (
-            <X
-              className="h-4 w-4 hover:text-zinc-200"
-              onClick={(e) => {
-                e.stopPropagation();
-                aoMudar([]);
-              }}
-            />
-          )}
-          <ChevronDown className={cn('h-4 w-4 transition-transform', aberto && 'rotate-180')} />
-        </span>
-      </button>
-      {aberto && (
-        <ul className="absolute z-30 mt-1 w-full overflow-hidden rounded-xl border border-white/10 bg-zinc-900 py-1 shadow-xl">
-          {opcoes.map((s) => {
-            const marcado = valor.includes(s);
-            return (
-              <li key={s}>
-                <button
-                  type="button"
-                  onClick={() => aoMudar(marcado ? valor.filter((v) => v !== s) : [...valor, s])}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-200 hover:bg-white/5"
-                >
-                  <span className={cn('flex h-4 w-4 items-center justify-center rounded border', marcado ? 'border-violet-500 bg-violet-500' : 'border-white/20')}>
-                    {marcado && <Check className="h-3 w-3 text-white" />}
-                  </span>
-                  {ROTULO_SITUACAO[s]}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
-  );
+  return <SeletorMultiplo valor={valor} aoMudar={aoMudar} opcoes={opcoes.map((v) => ({ valor: v, rotulo: ROTULO_SITUACAO[v] }))} />;
 }
 
 function CartaoAutomacao({ automacao }: { automacao: AutomacaoTarefa }) {
@@ -317,79 +238,6 @@ function FiltroDaColuna({ coluna, valor, sugestoes, aoMudar }: { coluna: Coluna;
 }
 
 // Números de página com reticências: 1 … 4 5 [6] 7 8 … 20
-function numerosPagina(atual: number, total: number): (number | '…')[] {
-  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
-  const meio = [atual - 1, atual, atual + 1].filter((n) => n > 1 && n < total);
-  const lista: (number | '…')[] = [1];
-  if (meio[0] > 2) lista.push('…');
-  lista.push(...meio);
-  if (meio[meio.length - 1] < total - 1) lista.push('…');
-  lista.push(total);
-  return lista;
-}
-
-function Paginacao({
-  pagina,
-  totalPaginas,
-  porPagina,
-  totalItens,
-  aoIr,
-  aoMudarPorPagina,
-}: {
-  pagina: number;
-  totalPaginas: number;
-  porPagina: number;
-  totalItens: number;
-  aoIr: (n: number) => void;
-  aoMudarPorPagina: (n: number) => void;
-}) {
-  const de = totalItens ? (pagina - 1) * porPagina + 1 : 0;
-  const ate = Math.min(pagina * porPagina, totalItens);
-  const botao = 'grid h-8 min-w-8 place-items-center rounded-lg border border-white/10 px-2 text-sm tabular-nums hover:bg-white/5 disabled:pointer-events-none disabled:opacity-40';
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-400">
-      <div className="flex items-center gap-3">
-        <label className="flex items-center gap-2">
-          Mostrar
-          <select
-            value={porPagina}
-            onChange={(e) => aoMudarPorPagina(Number(e.target.value))}
-            className="h-8 rounded-lg border border-white/10 bg-zinc-900/80 px-2 text-sm text-zinc-100 outline-none focus:border-violet-500"
-          >
-            {TAMANHOS_PAGINA.map((n) => <option key={n} value={n}>{n}</option>)}
-          </select>
-          por página
-        </label>
-        <span className="tabular-nums text-zinc-500">
-          {de.toLocaleString('pt-BR')}–{ate.toLocaleString('pt-BR')} de {totalItens.toLocaleString('pt-BR')}
-        </span>
-      </div>
-      {totalPaginas > 1 && (
-        <nav className="flex items-center gap-1" aria-label="Paginação">
-          <button onClick={() => aoIr(1)} disabled={pagina <= 1} className={botao} aria-label="Primeira página"><ChevronsLeft className="h-4 w-4" /></button>
-          <button onClick={() => aoIr(pagina - 1)} disabled={pagina <= 1} className={botao} aria-label="Página anterior"><ChevronLeft className="h-4 w-4" /></button>
-          {numerosPagina(pagina, totalPaginas).map((n, i) =>
-            n === '…' ? (
-              <span key={`r${i}`} className="px-1 text-zinc-600">…</span>
-            ) : (
-              <button
-                key={n}
-                onClick={() => aoIr(n)}
-                aria-current={n === pagina ? 'page' : undefined}
-                className={cn(botao, n === pagina && 'border-violet-500/60 bg-violet-500/15 text-white')}
-              >
-                {n}
-              </button>
-            ),
-          )}
-          <button onClick={() => aoIr(pagina + 1)} disabled={pagina >= totalPaginas} className={botao} aria-label="Próxima página"><ChevronRight className="h-4 w-4" /></button>
-          <button onClick={() => aoIr(totalPaginas)} disabled={pagina >= totalPaginas} className={botao} aria-label="Última página"><ChevronsRight className="h-4 w-4" /></button>
-        </nav>
-      )}
-    </div>
-  );
-}
-
 const COBRANCA = 'cobranca-documentos-invalidez';
 
 const SELO_COBRANCA: Record<StatusCobrancaTarefa['status'], { texto: string; cor: string }> = {
@@ -429,7 +277,9 @@ export function FiltroTarefas() {
   const filtrosAdiados = useDeferredValue(filtrosColuna); // digitação fluida mesmo com muitas linhas
   const [iniciando, setIniciando] = useState<number | null>(null);
   const [falha, setFalha] = useState<string | null>(null);
-  const [selecionadas, setSelecionadas] = useState<Set<number>>(new Set());
+  // Tarefas marcadas (id → automação da tarefa), mantidas ao trocar de página.
+  const [selecionadas, setSelecionadas] = useState<Map<number, string | null>>(new Map());
+  const [executandoIa, setExecutandoIa] = useState(false);
   const [confirmarCobranca, setConfirmarCobranca] = useState(false);
   const [cobrando, setCobrando] = useState(false);
   const [avisoCobranca, setAvisoCobranca] = useState<string | null>(null);
@@ -569,7 +419,6 @@ export function FiltroTarefas() {
   const automacaoCobranca = automacoesPorId.get(COBRANCA);
   const cobrancaAtiva = automacaoCobranca?.status === 'ativa';
   const idsCobraveis = linhas.filter((t) => t.automacaoId === COBRANCA).map((t) => t.id);
-  const temCobranca = idsCobraveis.length > 0;
   const chaveStatus = idsCobraveis.join(',');
   const statusConsulta = useConsulta(
     () => (chaveStatus ? api.statusCobranca(chaveStatus.split(',').map(Number)) : Promise.resolve({ configurado: false, tarefas: [] })),
@@ -577,14 +426,20 @@ export function FiltroTarefas() {
     `${chaveStatus}|${recargaCobranca}`,
   );
   const statusPorTarefa = useMemo(() => new Map((statusConsulta.dados?.tarefas ?? []).map((s) => [s.tarefaId, s])), [statusConsulta.dados]);
-  const selecionadasVisiveis = idsCobraveis.filter((id) => selecionadas.has(id));
-  const todasMarcadas = temCobranca && selecionadasVisiveis.length === idsCobraveis.length;
 
-  function alternarSelecao(id: number) {
+  // ---- Seleção: qualquer tarefa com processo pode ir para a IA; as de Cobrar Documentos também para o n8n ----
+  const selecionaveis = linhas.filter((t) => t.processo?.id);
+  const temSelecao = selecionaveis.length > 0;
+  const selecionadasVisiveis = selecionaveis.filter((t) => selecionadas.has(t.id));
+  const todasMarcadas = temSelecao && selecionadasVisiveis.length === selecionaveis.length;
+  const idsCobranca = [...selecionadas].filter(([, automacao]) => automacao === COBRANCA).map(([id]) => id);
+  const LIMITE_IA = 50;
+
+  function alternarSelecao(t: { id: number; automacaoId: string | null }) {
     setSelecionadas((atual) => {
-      const nova = new Set(atual);
-      if (nova.has(id)) nova.delete(id);
-      else nova.add(id);
+      const nova = new Map(atual);
+      if (nova.has(t.id)) nova.delete(t.id);
+      else nova.set(t.id, t.automacaoId);
       return nova;
     });
     setConfirmarCobranca(false);
@@ -592,18 +447,37 @@ export function FiltroTarefas() {
 
   function alternarTodas() {
     setSelecionadas((atual) => {
-      const nova = new Set(atual);
-      for (const id of idsCobraveis) {
-        if (todasMarcadas) nova.delete(id);
-        else nova.add(id);
+      const nova = new Map(atual);
+      for (const t of selecionaveis) {
+        if (todasMarcadas) nova.delete(t.id);
+        else nova.set(t.id, t.automacaoId);
       }
       return nova;
     });
     setConfirmarCobranca(false);
   }
 
+  // A IA analisa as tarefas escolhidas e deixa os pedidos (cliente, cada empresa, não classificados) na conferência.
+  async function executarIa() {
+    const ids = [...selecionadas.keys()];
+    if (ids.length > LIMITE_IA) {
+      setFalha(`Selecione no máximo ${LIMITE_IA} tarefas por execução (há ${ids.length}).`);
+      return;
+    }
+    setExecutandoIa(true);
+    setFalha(null);
+    try {
+      await api.executarSelecionadas(ids);
+      setSelecionadas(new Map());
+      roteador.push('/documentos');
+    } catch (e) {
+      setFalha((e as Error).message);
+      setExecutandoIa(false);
+    }
+  }
+
   async function cobrar() {
-    const ids = [...selecionadas];
+    const ids = idsCobranca;
     setCobrando(true);
     setFalha(null);
     setAvisoCobranca(null);
@@ -618,7 +492,11 @@ export function FiltroTarefas() {
       setAvisoCobranca(
         `${pedido.itens.length} tarefa(s) enviada(s) ao n8n.` + (pedido.recusadas.length ? ` ${pedido.recusadas.length} recusada(s): ${pedido.recusadas.map((r) => `#${r.tarefaId} (${r.motivo})`).join('; ')}` : ''),
       );
-      setSelecionadas(new Set());
+      setSelecionadas((atual) => {
+        const nova = new Map(atual);
+        for (const id of ids) nova.delete(id);
+        return nova;
+      });
       setRecargaCobranca((n) => n + 1);
     } catch (e) {
       setFalha((e as Error).message);
@@ -742,19 +620,21 @@ export function FiltroTarefas() {
         </div>
       )}
 
-      {temCobranca && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-2.5 text-sm">
+      {(temSelecao || selecionadas.size > 0) && (
+        <div className={cn('sticky top-2 z-10 flex flex-wrap items-center gap-3 rounded-xl border px-4 py-2.5 text-sm backdrop-blur transition-colors', selecionadas.size ? 'border-violet-500/40 bg-violet-950/60' : 'border-white/10 bg-zinc-950/60')}>
           <span className="text-zinc-300">
-            {selecionadas.size ? `${selecionadas.size} tarefa(s) selecionada(s) para cobrança` : 'Marque as tarefas de Cobrar Documentos que o n8n deve cobrar.'}
+            {selecionadas.size
+              ? `${selecionadas.size} tarefa(s) selecionada(s)${selecionadas.size > selecionadasVisiveis.length ? ` (${selecionadas.size - selecionadasVisiveis.length} em outras páginas)` : ''}`
+              : 'Marque as tarefas que a IA deve analisar. Ela prepara os pedidos ao cliente e a cada empresa para a conferência; nada é enviado sem alguém conferir.'}
           </span>
-          {!cobrancaAtiva && <span className="text-xs text-amber-300">{automacaoCobranca?.motivoInativa ?? 'Integração com o n8n desligada.'}</span>}
-          <div className="ml-auto flex items-center gap-2">
+          {selecionadas.size > LIMITE_IA && <span className="text-xs text-amber-300">Máximo de {LIMITE_IA} por execução.</span>}
+          <div className="ml-auto flex flex-wrap items-center gap-2">
             {selecionadas.size > 0 && (
-              <button onClick={() => { setSelecionadas(new Set()); setConfirmarCobranca(false); }} className="text-xs text-zinc-400 hover:text-zinc-200">Limpar seleção</button>
+              <button onClick={() => { setSelecionadas(new Map()); setConfirmarCobranca(false); }} className="text-xs text-zinc-400 hover:text-zinc-200">Limpar seleção</button>
             )}
-            {confirmarCobranca ? (
+            {idsCobranca.length > 0 && (confirmarCobranca ? (
               <>
-                <span className="text-xs text-amber-200">O n8n vai mandar WhatsApp para {selecionadas.size} cliente(s). Confirmar?</span>
+                <span className="text-xs text-amber-200">O n8n vai mandar WhatsApp para {idsCobranca.length} cliente(s). Confirmar?</span>
                 <button onClick={cobrar} disabled={cobrando} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 disabled:opacity-60">
                   {cobrando && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Confirmar
                 </button>
@@ -763,13 +643,20 @@ export function FiltroTarefas() {
             ) : (
               <button
                 onClick={() => setConfirmarCobranca(true)}
-                disabled={!cobrancaAtiva || !selecionadas.size}
-                title={!cobrancaAtiva ? automacaoCobranca?.motivoInativa : undefined}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
+                disabled={!cobrancaAtiva}
+                title={!cobrancaAtiva ? automacaoCobranca?.motivoInativa ?? 'Integração com o n8n desligada.' : 'Só as tarefas de Cobrar Documentos (Invalidez)'}
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-zinc-200 ring-1 ring-white/15 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                <Play className="h-3.5 w-3.5" /> Cobrar pelo n8n
+                <Play className="h-3.5 w-3.5" /> Cobrar pelo n8n ({idsCobranca.length})
               </button>
-            )}
+            ))}
+            <button
+              onClick={executarIa}
+              disabled={!selecionadas.size || selecionadas.size > LIMITE_IA || executandoIa}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {executandoIa ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bot className="h-3.5 w-3.5" />} Executar IA{selecionadas.size ? ` (${selecionadas.size})` : ''}
+            </button>
           </div>
         </div>
       )}
@@ -800,9 +687,9 @@ export function FiltroTarefas() {
           <table className="w-full min-w-max text-left text-sm">
             <thead className="border-b border-white/10 text-xs uppercase tracking-wide text-zinc-500">
               <tr>
-                {temCobranca && (
+                {temSelecao && (
                   <th rowSpan={2} className="w-10 px-3 align-top pt-2.5">
-                    <input type="checkbox" checked={todasMarcadas} onChange={alternarTodas} className="h-4 w-4 accent-violet-500" aria-label="Selecionar todas as tarefas de cobrança da página" />
+                    <input type="checkbox" checked={todasMarcadas} onChange={alternarTodas} className="h-4 w-4 accent-violet-500" aria-label="Selecionar todas as tarefas da página" />
                   </th>
                 )}
                 {colunas.map((c) => <th key={c.id} className="px-3 py-2.5 font-medium">{c.titulo}</th>)}
@@ -822,10 +709,12 @@ export function FiltroTarefas() {
                 const automacao = t.automacaoId ? automacoesPorId.get(t.automacaoId) : undefined;
                 return (
                   <tr key={t.id} className={cn('transition-colors hover:bg-white/[0.03]', t.destaca && 'bg-amber-500/[0.04]', selecionadas.has(t.id) && 'bg-violet-500/[0.06]')}>
-                    {temCobranca && (
+                    {temSelecao && (
                       <td className="px-3 py-2">
-                        {t.automacaoId === COBRANCA && (
-                          <input type="checkbox" checked={selecionadas.has(t.id)} onChange={() => alternarSelecao(t.id)} className="h-4 w-4 accent-violet-500" aria-label={`Selecionar tarefa ${t.id}`} />
+                        {t.processo?.id ? (
+                          <input type="checkbox" checked={selecionadas.has(t.id)} onChange={() => alternarSelecao(t)} className="h-4 w-4 accent-violet-500" aria-label={`Selecionar tarefa ${t.id}`} />
+                        ) : (
+                          <span title="Tarefa sem processo: a IA não tem o que ler" className="text-zinc-700">—</span>
                         )}
                       </td>
                     )}
@@ -856,7 +745,7 @@ export function FiltroTarefas() {
               })}
               {dados && !linhas.length && (
                 <tr>
-                  <td colSpan={colunas.length + 1 + (temCobranca ? 1 : 0)} className="px-4 py-10 text-center text-zinc-500">Nenhuma tarefa neste filtro.</td>
+                  <td colSpan={colunas.length + 1 + (temSelecao ? 1 : 0)} className="px-4 py-10 text-center text-zinc-500">Nenhuma tarefa neste filtro.</td>
                 </tr>
               )}
             </tbody>
@@ -865,7 +754,7 @@ export function FiltroTarefas() {
       )}
 
       {dados && totalItens > 0 && (
-        <Paginacao pagina={paginaVisivel} totalPaginas={totalPaginas} porPagina={porPagina} totalItens={totalItens} aoIr={irParaPagina} aoMudarPorPagina={mudarPorPagina} />
+        <Paginacao tamanhos={TAMANHOS_PAGINA} pagina={paginaVisivel} totalPaginas={totalPaginas} porPagina={porPagina} totalItens={totalItens} aoIr={irParaPagina} aoMudarPorPagina={mudarPorPagina} />
       )}
     </div>
   );
