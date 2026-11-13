@@ -39,6 +39,15 @@ export const classificarPendenciaSchema = z.object({
   empresa: z.string().trim().min(2, 'informe o nome da empresa').optional(),
 });
 
+export const anexarPaginasSchema = z.object({
+  por: funcionario,
+  arquivoId: z.number().int().positive(),
+  paginas: z.array(z.number().int().min(1)).min(1, 'escolha ao menos uma página').max(500),
+  tipo: z.string().trim().max(40).optional(),
+  substituirAnexoId: z.string().optional(), // ajustar as páginas de um anexo que já existe
+});
+
+export type AnexarPaginas = z.infer<typeof anexarPaginasSchema>;
 export type ClassificarPendencia = z.infer<typeof classificarPendenciaSchema>;
 export type EditarSolicitacao = z.infer<typeof editarSolicitacaoSchema>;
 export type ConcluirSolicitacao = z.infer<typeof concluirSolicitacaoSchema>;

@@ -78,6 +78,16 @@ export async function obterTarefa(tarefaId: number, displayFields?: string): Pro
   return resposta.data ?? null;
 }
 
+// Tarefa com todos os campos (tela de cadastro da tarefa no Lawyertool).
+export async function obterTarefaCompleta(tarefaId: number): Promise<Record<string, unknown> | null> {
+  const resposta = await requisitarJson<RespostaItem<Record<string, unknown>>>(`/tarefa/${tarefaId}`);
+  return resposta.data ?? null;
+}
+
+export function listarHistoricoTarefa(tarefaId: number) {
+  return requisitarJson<RespostaPaginada<Record<string, unknown>>>(`/tarefa/${tarefaId}/historico`);
+}
+
 export async function obterProcesso(processoId: number): Promise<Processo> {
   const resposta = await requisitarJson<RespostaItem<Processo>>(`/processo/${processoId}`);
   return resposta.data;

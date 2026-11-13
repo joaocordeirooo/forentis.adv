@@ -6,6 +6,7 @@ import type { MensagemDex } from '@/models/dex.model';
 import type { AcaoNova, Despesa, ParadaPainel, PosicaoVeiculo } from '@/models/rota.model';
 import type { Execucao } from '@/models/execucao.model';
 import type { Solicitacao } from '@/models/solicitacao.model';
+import type { TarefaDetalhe } from '@/models/tarefa-detalhe.model';
 import type { EstadoTarefa, ResultadoBuscaTarefas, Tarefa } from '@/models/tarefa.model';
 import type { OpcoesFiltroTarefas, ResultadoFiltroTarefas } from '@/models/filtro-tarefas.model';
 import type { PedidoCobranca, StatusCobrancaTarefa } from '@/models/cobranca-n8n.model';
@@ -63,6 +64,39 @@ async function enviarArquivo<T>(caminho: string, arquivo: File, por: string): Pr
   const dados = await resposta.json().catch(() => ({}));
   if (!resposta.ok) throw new ErroApi(dados.erro ?? `Erro ${resposta.status}`, resposta.status, dados.detalhes);
   return dados as T;
+}
+
+// Arquivos protegidos pela chave de API: um link comum não manda o cabeçalho, então baixa aqui.
+async function baixarComChave(caminho: string): Promise<Response> {
+  const resposta = await fetch(caminho, { headers: { 'x-api-key': lerChaveApi() }, cache: 'no-store' });
+  if (!resposta.ok) {
+    const dados = await resposta.json().catch(() => ({}));
+    throw new ErroApi(dados.erro ?? `Erro ${resposta.status}`, resposta.status, dados.detalhes);
+  }
+  return resposta;
+}
+
+// Abre um arquivo da API numa aba nova (a aba é aberta já no clique para o navegador não bloquear).
+export async function abrirArquivo(caminho: string): Promise<void> {
+  const aba = window.open('', '_blank');
+  try {
+    const blob = await (await baixarComChave(caminho)).blob();
+    const url = URL.createObjectURL(blob);
+    if (aba) aba.location.href = url;
+    else window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (erro) {
+    aba?.close();
+    throw erro;
+  }
+}
+
+export interface DocumentoProcesso {
+  id: number;
+  nome: string;
+  tipo: string;
+  rotulo: string;
+  enviadoEm: string | null;
 }
 
 export interface Saude {
@@ -132,8 +166,17 @@ export const api = {
   execucao: (id: string) => chamar<ExecucaoCompleta>(`/api/analises/${id}`),
   iniciarAnalise: (tarefaId?: number, forcar = false) =>
     chamar<{ execucaoId: string }>('/api/analises', { metodo: 'POST', corpo: { ...(tarefaId ? { tarefaId } : {}), ...(forcar ? { forcar } : {}) } }),
-  executarSelecionadas: (tarefaIds: number[]) =>
-    chamar<{ execucaoId: string }>('/api/analises', { metodo: 'POST', corpo: { tarefaIds } }),
+  documentosProcesso: (id: string, atualizar = false) =>
+    chamar<DocumentoProcesso[]>(`/api/solicitacoes/${id}/documentos${atualizar ? '?atualizar=1' : ''}`),
+  baixarDocumento: async (id: string, arquivoId: number) => {
+    const resposta = await baixarComChave(`/api/solicitacoes/${id}/documentos/${arquivoId}`);
+    return { blob: await resposta.blob(), paginas: Number(resposta.headers.get('X-Paginas')) || 0 };
+  },
+  anexarPaginas: (id: string, dados: { por: string; arquivoId: number; paginas: number[]; tipo?: string; substituirAnexoId?: string }) =>
+    chamar<Solicitacao>(`/api/solicitacoes/${id}/anexos/paginas`, { metodo: 'POST', corpo: dados }),
+  tarefaDetalhe: (id: number) => chamar<TarefaDetalhe>(`/api/tarefas/${id}`),
+  executarSelecionadas: (tarefaIds: number[], solicitadoPor: string) =>
+    chamar<{ execucaoId: string }>('/api/analises', { metodo: 'POST', corpo: { tarefaIds, solicitadoPor } }),
   classificar: (id: string, dados: { por: string; indice: number; destino: 'cliente' | 'empresa' | 'ignorar'; empresa?: string }) =>
     chamar<Solicitacao>(`/api/solicitacoes/${id}/classificar`, { metodo: 'POST', corpo: dados }),
   anexar: (id: string, arquivo: File, por: string) => enviarArquivo<Solicitacao>(`/api/solicitacoes/${id}/anexos`, arquivo, por),

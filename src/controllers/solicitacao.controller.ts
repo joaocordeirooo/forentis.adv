@@ -1,6 +1,8 @@
 import * as solicitacoes from '@/service/solicitacao.service';
 import { classificarPendencia } from '@/service/solicitacao-indefinida.service';
+import { anexarPaginas, listarDocumentos, obterDocumento } from '@/service/selecao-paginas.service';
 import {
+  anexarPaginasSchema,
   classificarPendenciaSchema,
   concluirSolicitacaoSchema,
   descartarSolicitacaoSchema,
@@ -78,4 +80,36 @@ export async function classificarSolicitacao(request: Request, { params }: ComId
   const { id } = await params;
   const dados = await lerCorpo(request, classificarPendenciaSchema);
   return Response.json(await classificarPendencia(id, dados));
+}
+
+type ComArquivo = { params: Promise<{ id: string; arquivoId: string }> };
+
+// GET /api/solicitacoes/:id/documentos — PDFs do processo para escolher páginas (CTPS primeiro).
+export async function listarDocumentosProcesso(request: Request, { params }: ComId): Promise<Response> {
+  const { id } = await params;
+  const atualizar = new URL(request.url).searchParams.get('atualizar') === '1';
+  return Response.json(await listarDocumentos(id, atualizar));
+}
+
+// GET /api/solicitacoes/:id/documentos/:arquivoId — o PDF original (cabeçalho X-Paginas = total de páginas).
+export async function baixarDocumentoProcesso(_request: Request, { params }: ComArquivo): Promise<Response> {
+  const { id, arquivoId } = await params;
+  const numero = Number(arquivoId);
+  if (!Number.isInteger(numero) || numero < 1) throw new AppError('Arquivo inválido.', 400);
+  const { documento, conteudo, paginas } = await obterDocumento(id, numero);
+  return new Response(new Uint8Array(conteudo), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${encodeURIComponent(documento.nome)}"`,
+      'X-Paginas': String(paginas),
+      'Cache-Control': 'private, max-age=600',
+    },
+  });
+}
+
+// POST /api/solicitacoes/:id/anexos/paginas — anexa só as páginas escolhidas de um PDF do processo.
+export async function anexarPaginasDocumento(request: Request, { params }: ComId): Promise<Response> {
+  const { id } = await params;
+  const dados = await lerCorpo(request, anexarPaginasSchema);
+  return Response.json(await anexarPaginas(id, dados));
 }

@@ -1,5 +1,5 @@
-import { VisaoGeral } from '@/components/painel/visao-geral';
+import { VisaoGeralCarregador } from '@/components/painel/visao-geral-carregador';
 
 export default function Pagina() {
-  return <VisaoGeral />;
+  return <VisaoGeralCarregador />;
 }

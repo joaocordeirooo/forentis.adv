@@ -3,7 +3,7 @@ import { gerarJson } from '@/integrations/openai.integration';
 import type { AnaliseTarefa, DecisaoAnalise, Pendencia } from '@/models/analise.model';
 import type { ContextoTarefa } from '@/models/contexto-tarefa.model';
 import { carregarPrompt } from '@/utils/prompt.util';
-import { lista } from '@/utils/texto.util';
+import { lista, textoPeriodo } from '@/utils/texto.util';
 import { ehComentarioAutomatico } from './travas.service';
 
 const DECISOES: DecisaoAnalise[] = ['preparar_pendencias', 'consultar_arquivos', 'conferencia_humana', 'nenhuma_acao'];
@@ -89,7 +89,7 @@ export async function analisarTarefa(contexto: ContextoTarefa): Promise<AnaliseT
     return vazia('erro_analise', `Decisão da IA não reconhecida: ${String(resultado.decisao)}`);
   }
 
-  const pendencias = lista<Pendencia>(resultado.pendencias);
+  const pendencias = lista<Pendencia>(resultado.pendencias).map((p) => ({ ...p, periodo: textoPeriodo(p.periodo) }));
   const tipo = (p: Pendencia) => String(p?.destinatario_tipo ?? '').trim().toLowerCase();
   const confianca = String(resultado.confianca_cliente ?? '').toLowerCase();
 

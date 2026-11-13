@@ -1,11 +1,14 @@
 'use client';
 
-import { Bot, Filter, FilterX, Loader2, Minus, Play, Plus, RefreshCw, Search, X } from 'lucide-react';
+import { Bot, Eye, ExternalLink, Filter, FilterX, Loader2, Minus, Play, Plus, RefreshCw, Search, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useDeferredValue, useMemo, useState, type ReactNode } from 'react';
 import { AvisoErro } from '@/components/ui/aviso-erro';
 import { Campo, estiloCampo, IntervaloDatas, SeletorMultiplo } from '@/components/ui/campos-filtro';
 import { Paginacao } from '@/components/ui/paginacao';
+import { aplicarConfig, lerConfigColunas, salvarConfigColunas, SeletorColunas, type ConfigColunas } from '@/components/ui/seletor-colunas';
+import { linkTarefaLawyertool } from '@/lib/lawyertool-link';
+import { JanelaTarefaLawyertool } from './janela-tarefa-lawyertool';
 import { Esqueleto } from '@/components/ui/esqueleto';
 import { useConsulta } from '@/hooks/use-consulta';
 import { api } from '@/lib/api-client';
@@ -47,6 +50,7 @@ const PADRAO: EstadoFiltro = {
 const CHAVE_STORAGE = 'forentis.filtroTarefas';
 const TAMANHOS_PAGINA = [10, 25, 50] as const;
 const CHAVE_POR_PAGINA = 'forentis.tarefasPorPagina';
+const CHAVE_COLUNAS = 'forentis.colunasTarefas';
 
 function lerPorPagina(): number {
   try {
@@ -270,6 +274,12 @@ export function FiltroTarefas() {
   const [pagina, setPagina] = useState(1);
   const [painelAberto, setPainelAberto] = useState(true);
   const [ocultarVazias, setOcultarVazias] = useState(true);
+  // Colunas escolhidas pelo funcionário (quais e em que ordem), lembradas no navegador.
+  const [configColunas, setConfigColunas] = useState<ConfigColunas | null>(() => lerConfigColunas(CHAVE_COLUNAS));
+  function mudarColunas(config: ConfigColunas | null) {
+    setConfigColunas(config);
+    salvarConfigColunas(CHAVE_COLUNAS, config);
+  }
   const [recarga, setRecarga] = useState(0);
   const [filtrosColuna, setFiltrosColuna] = useState<Record<string, string>>({});
   const [paginaLocal, setPaginaLocal] = useState(1);
@@ -280,6 +290,15 @@ export function FiltroTarefas() {
   // Tarefas marcadas (id → automação da tarefa), mantidas ao trocar de página.
   const [selecionadas, setSelecionadas] = useState<Map<number, string | null>>(new Map());
   const [executandoIa, setExecutandoIa] = useState(false);
+  const [tarefaAberta, setTarefaAberta] = useState<number | null>(null);
+  // Quem pede a execução (o mesmo nome usado na conferência); a tela só roda no navegador.
+  const [meuNome, setMeuNome] = useState(() => {
+    try {
+      return localStorage.getItem('forentis.funcionario') ?? '';
+    } catch {
+      return '';
+    }
+  });
   const [confirmarCobranca, setConfirmarCobranca] = useState(false);
   const [cobrando, setCobrando] = useState(false);
   const [avisoCobranca, setAvisoCobranca] = useState<string | null>(null);
@@ -359,10 +378,11 @@ export function FiltroTarefas() {
   const dados = resultado.dados;
   const automacoesPorId = useMemo(() => new Map((opcoes.dados?.automacoes ?? []).map((a) => [a.id, a])), [opcoes.dados]);
   const colunas = useMemo(() => {
-    if (!ocultarVazias || !dados?.tarefas.length) return COLUNAS;
+    const escolhidas = aplicarConfig(COLUNAS, configColunas);
+    if (!ocultarVazias || !dados?.tarefas.length) return escolhidas;
     // Coluna com filtro digitado nunca some, senão não daria para apagar o filtro.
-    return COLUNAS.filter((c) => filtrosColuna[c.id]?.trim() || dados.tarefas.some((t) => c.valor(t)));
-  }, [dados, ocultarVazias, filtrosColuna]);
+    return escolhidas.filter((c) => filtrosColuna[c.id]?.trim() || dados.tarefas.some((t) => c.valor(t)));
+  }, [dados, ocultarVazias, filtrosColuna, configColunas]);
 
   // Sugestões das colunas de texto: valores distintos das tarefas carregadas.
   const sugestoes = useMemo(() => {
@@ -464,10 +484,20 @@ export function FiltroTarefas() {
       setFalha(`Selecione no máximo ${LIMITE_IA} tarefas por execução (há ${ids.length}).`);
       return;
     }
+    const nome = meuNome.trim();
+    if (nome.length < 2) {
+      setFalha('Informe seu nome: é por ele que você filtra depois as tarefas que mandou a IA executar.');
+      return;
+    }
+    try {
+      localStorage.setItem('forentis.funcionario', nome);
+    } catch {
+      /* sem armazenamento */
+    }
     setExecutandoIa(true);
     setFalha(null);
     try {
-      await api.executarSelecionadas(ids);
+      await api.executarSelecionadas(ids, nome);
       setSelecionadas(new Map());
       roteador.push('/documentos');
     } catch (e) {
@@ -650,9 +680,19 @@ export function FiltroTarefas() {
                 <Play className="h-3.5 w-3.5" /> Cobrar pelo n8n ({idsCobranca.length})
               </button>
             ))}
+            {selecionadas.size > 0 && (
+              <input
+                value={meuNome}
+                onChange={(e) => setMeuNome(e.target.value)}
+                placeholder="Seu nome"
+                aria-label="Seu nome (quem pede a execução)"
+                className="h-8 w-40 rounded-lg border border-white/10 bg-black/40 px-2.5 text-xs text-zinc-100 outline-none focus:border-violet-500"
+              />
+            )}
             <button
               onClick={executarIa}
-              disabled={!selecionadas.size || selecionadas.size > LIMITE_IA || executandoIa}
+              disabled={!selecionadas.size || selecionadas.size > LIMITE_IA || executandoIa || meuNome.trim().length < 2}
+              title={meuNome.trim().length < 2 ? 'Informe seu nome' : undefined}
               className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {executandoIa ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bot className="h-3.5 w-3.5" />} Executar IA{selecionadas.size ? ` (${selecionadas.size})` : ''}
@@ -678,6 +718,7 @@ export function FiltroTarefas() {
             </button>
           )}
         </span>
+        <SeletorColunas colunas={COLUNAS} config={configColunas} aoMudar={mudarColunas} />
       </div>
 
       {resultado.carregando && !dados ? (
@@ -694,6 +735,7 @@ export function FiltroTarefas() {
                 )}
                 {colunas.map((c) => <th key={c.id} className="px-3 py-2.5 font-medium">{c.titulo}</th>)}
                 {temAcao && <th className="px-3 py-2.5 font-medium">Automação</th>}
+                <th rowSpan={2} className="px-3 py-2.5 align-top font-medium">Abrir</th>
               </tr>
               <tr className="border-t border-white/5 normal-case tracking-normal">
                 {colunas.map((c) => (
@@ -708,7 +750,14 @@ export function FiltroTarefas() {
               {linhas.map((t) => {
                 const automacao = t.automacaoId ? automacoesPorId.get(t.automacaoId) : undefined;
                 return (
-                  <tr key={t.id} className={cn('transition-colors hover:bg-white/[0.03]', t.destaca && 'bg-amber-500/[0.04]', selecionadas.has(t.id) && 'bg-violet-500/[0.06]')}>
+                  <tr
+                    key={t.id}
+                    onClick={(e) => {
+                      // Clique na linha abre a tarefa (menos em caixas de marcação, botões e links).
+                      if ((e.target as HTMLElement).closest('input, button, a, select, label')) return;
+                      setTarefaAberta(t.id);
+                    }}
+                    className={cn('cursor-pointer transition-colors hover:bg-white/[0.03]', t.destaca && 'bg-amber-500/[0.04]', selecionadas.has(t.id) && 'bg-violet-500/[0.06]')}>
                     {temSelecao && (
                       <td className="px-3 py-2">
                         {t.processo?.id ? (
@@ -740,12 +789,22 @@ export function FiltroTarefas() {
                         ) : null}
                       </td>
                     )}
+                    <td className="whitespace-nowrap px-3 py-2">
+                      <span className="flex items-center gap-1">
+                        <button onClick={() => setTarefaAberta(t.id)} className="rounded-lg p-1.5 text-zinc-400 hover:bg-white/10 hover:text-white" title="Ver a tarefa na íntegra">
+                          <Eye className="h-4 w-4" />
+                        </button>
+                        <a href={linkTarefaLawyertool(t.id)} target="_blank" rel="noreferrer" className="rounded-lg p-1.5 text-zinc-400 hover:bg-violet-500/15 hover:text-violet-200" title="Abrir no Lawyertool">
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                      </span>
+                    </td>
                   </tr>
                 );
               })}
               {dados && !linhas.length && (
                 <tr>
-                  <td colSpan={colunas.length + 1 + (temSelecao ? 1 : 0)} className="px-4 py-10 text-center text-zinc-500">Nenhuma tarefa neste filtro.</td>
+                  <td colSpan={colunas.length + 2 + (temSelecao ? 1 : 0)} className="px-4 py-10 text-center text-zinc-500">Nenhuma tarefa neste filtro.</td>
                 </tr>
               )}
             </tbody>
@@ -756,6 +815,7 @@ export function FiltroTarefas() {
       {dados && totalItens > 0 && (
         <Paginacao tamanhos={TAMANHOS_PAGINA} pagina={paginaVisivel} totalPaginas={totalPaginas} porPagina={porPagina} totalItens={totalItens} aoIr={irParaPagina} aoMudarPorPagina={mudarPorPagina} />
       )}
+      <JanelaTarefaLawyertool tarefaId={tarefaAberta} aoFechar={() => setTarefaAberta(null)} />
     </div>
   );
 }

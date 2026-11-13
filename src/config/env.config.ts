@@ -67,6 +67,29 @@ export const config = {
     };
   },
 
+  // Caixa de e-mail do Forentis: a mesma conta do SMTP. IMAP serve para guardar a cópia nos Enviados
+  // e (parte 2) ler as respostas.
+  get caixaEmail() {
+    const smtp = this.smtp;
+    return {
+      ...smtp,
+      imapHost: opcional('IMAP_HOST', smtp.host),
+      imapPorta: numero('IMAP_PORT', 993),
+      pastaEntrada: opcional('IMAP_PASTA_ENTRADA', 'INBOX'),
+      pastaEnviados: opcional('IMAP_PASTA_ENVIADOS', 'INBOX.Sent'),
+      copiarEnviados: booleano('EMAIL_COPIAR_ENVIADOS', true),
+      // Domínio usado no Message-ID (<...@damadvogados.com.br>).
+      dominio: (smtp.usuario.split('@')[1] ?? 'forentis.local').toLowerCase(),
+      maxAnexosMb: numero('EMAIL_MAX_ANEXOS_MB', 15),
+      // Leitura das respostas: de quantos em quantos minutos (0 = só manual, pelo botão/rota).
+      leituraMinutos: numero('EMAIL_LEITURA_MINUTOS', 5),
+      // Conversa "sem resposta" depois de N dias do último envio.
+      diasSemResposta: numero('EMAIL_DIAS_SEM_RESPOSTA', 7),
+      // Comenta na tarefa do Lawyertool quando chega resposta ou devolução.
+      comentarRespostas: booleano('EMAIL_COMENTAR_RESPOSTAS', true),
+    };
+  },
+
   get automacao() {
     return {
       modoTeste: booleano('MODO_TESTE', true), // true = WhatsApp e e-mail só vão para os destinos de teste

@@ -45,6 +45,8 @@ export async function gerarJson(pedido: PedidoJson): Promise<Record<string, unkn
   const conteudo: unknown[] = [];
   if (pedido.arquivo) conteudo.push(montarArquivo(pedido.arquivo));
   conteudo.push({ type: 'input_text', text: pedido.texto });
+  // Com text.format json_object, a OpenAI exige a palavra "json" na mensagem do usuário (as instruções não contam).
+  if (!/json/i.test(pedido.texto)) conteudo.push({ type: 'input_text', text: 'Responda somente com um objeto JSON válido.' });
 
   let resposta: Response;
   try {

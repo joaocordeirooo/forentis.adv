@@ -1,13 +1,21 @@
 import { config } from '@/config/env.config';
 import { AppError } from '@/errors/app.errors';
-import { enviarEmail } from '@/integrations/email.integration';
+import { enviar as enviarPelaCaixa } from './caixa-email.service';
 import { registrarComentarioTarefa } from '@/integrations/lawyertool.integration';
 import type { Solicitacao } from '@/models/solicitacao.model';
 import { lerAnexo } from '@/repositories/anexo.repository';
 import { MARCA_COMPLETAR } from './solicitacao-empresa.service';
 import { MARCADOR } from './travas.service';
 
-function comentario(s: Solicitacao, destino: string, enviado: boolean, motivo: string | null, funcionario: string, anexos: string[]): string {
+function comentario(
+  s: Solicitacao,
+  destino: string,
+  enviado: boolean,
+  motivo: string | null,
+  funcionario: string,
+  anexos: string[],
+  codigoEmail: string | null,
+): string {
   return [
     `${MARCADOR} empresa:${s.empresaChave} assinatura:${s.assinatura}${s.modoTeste ? ' MODO TESTE' : ''}`,
     'SOLICITAÇÃO À EMPRESA — E-MAIL',
@@ -15,6 +23,7 @@ function comentario(s: Solicitacao, destino: string, enviado: boolean, motivo: s
     '',
     `Empresa: ${s.empresa}`,
     `Para: ${destino}`,
+    ...(codigoEmail ? [`Código do e-mail: ${codigoEmail} (as respostas da empresa ficam registradas no Forentis)`] : []),
     `Situação: ${enviado ? 'ENVIADO' : 'NÃO ENVIADO'}`,
     ...(motivo ? [`Motivo: ${motivo}`] : []),
     `Conferido por: ${funcionario}`,
@@ -29,10 +38,10 @@ function comentario(s: Solicitacao, destino: string, enviado: boolean, motivo: s
 
 export async function concluirSolicitacaoEmpresa(s: Solicitacao, funcionario: string) {
   const cfg = config.automacao;
-  const destino = cfg.modoTeste ? cfg.emailTeste : s.destinatario.email;
-  if (!destino) {
-    throw new AppError(cfg.modoTeste ? 'EMAIL_TESTE não definido no .env.' : 'Informe o e-mail da empresa antes de concluir.', 422);
-  }
+  // Endereço real da empresa (no modo teste, a caixa troca pelo EMAIL_TESTE e avisa no corpo para onde iria).
+  const paraEmpresa = s.destinatario.email || (cfg.modoTeste ? cfg.emailTeste : null);
+  if (cfg.modoTeste && !cfg.emailTeste) throw new AppError('EMAIL_TESTE não definido no .env.', 422);
+  if (!paraEmpresa) throw new AppError('Informe o e-mail da empresa antes de concluir.', 422);
   if (s.texto.includes(MARCA_COMPLETAR)) {
     throw new AppError('Complete a identificação do cliente no texto do e-mail antes de concluir.', 422);
   }
@@ -44,22 +53,25 @@ export async function concluirSolicitacaoEmpresa(s: Solicitacao, funcionario: st
     anexos.push({ nome: anexo.nomeArquivo, conteudo, mimeType: anexo.mimeType });
   }
 
-  let enviado = false;
-  let motivo: string | null = null;
-  try {
-    await enviarEmail({ para: destino, assunto: `${cfg.modoTeste ? '[TESTE] ' : ''}${s.assunto ?? 'Solicitação de documentos'}`, texto: s.texto, anexos });
-    enviado = true;
-  } catch (erro) {
-    motivo = (erro as Error).message;
-  }
+  // A caixa registra a conversa, põe a assinatura do funcionário e guarda a cópia nos Enviados.
+  const envio = await enviarPelaCaixa({
+    para: [paraEmpresa],
+    assunto: s.assunto ?? 'Solicitação de documentos',
+    texto: s.texto,
+    anexos,
+    vinculo: { tipo: 'solicitacao_empresa', solicitacaoId: s.id, tarefaId: s.tarefaId, empresa: s.empresa },
+    funcionario,
+  });
+  const { enviado, motivo } = envio;
+  const destino = envio.destino.join(', ');
 
   let comentarioRegistrado = true;
   try {
-    await registrarComentarioTarefa(s.tarefaId, comentario(s, destino, enviado, motivo, funcionario, anexos.map((a) => a.nome)));
+    await registrarComentarioTarefa(s.tarefaId, comentario(s, destino, enviado, motivo, funcionario, anexos.map((a) => a.nome), envio.conversa.codigo));
   } catch (erro) {
     comentarioRegistrado = false;
     console.error('[envio-empresa] comentário não registrado', erro);
   }
 
-  return { enviado, destino, motivo, comentarioRegistrado };
+  return { enviado, destino, motivo, comentarioRegistrado, conversaEmailId: envio.conversa.id };
 }

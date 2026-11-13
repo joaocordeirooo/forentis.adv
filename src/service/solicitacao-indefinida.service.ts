@@ -95,6 +95,7 @@ function base(origem: Solicitacao, por: string): Omit<Solicitacao, 'tipo' | 'emp
     clienteNome: origem.clienteNome,
     responsavel: origem.responsavel,
     origem: origem.origem,
+    solicitadoPor: origem.solicitadoPor ?? null,
     modoTeste: config.automacao.modoTeste,
     resumo: origem.resumo,
     confianca: null,

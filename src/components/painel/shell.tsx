@@ -1,7 +1,7 @@
 'use client';
 
 import { AnimatePresence, motion } from 'motion/react';
-import { Bot, FileStack, History, Home, KeyRound, LayoutDashboard, ListTodo, Map, Menu, Sparkles, Truck, X, type LucideIcon } from 'lucide-react';
+import { Bot, FileStack, History, Home, KeyRound, LayoutDashboard, ListTodo, Mail, Map, Menu, Sparkles, Truck, X, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -37,6 +37,11 @@ const ESTACOES: { titulo: string | null; cor: string; itens: ItemMenu[] }[] = [
       { href: '/atendimento', rotulo: 'Tarefas da semana', icone: Truck, exato: true },
       { href: '/atendimento/rota', rotulo: 'Rota e despesas', icone: Map },
     ],
+  },
+  {
+    titulo: 'E-mails',
+    cor: 'text-amber-300',
+    itens: [{ href: '/emails', rotulo: 'Caixa de solicitações', icone: Mail }],
   },
   {
     titulo: 'Agentes',

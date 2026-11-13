@@ -65,6 +65,7 @@ export interface Solicitacao {
   clienteNome: string | null;
   responsavel: string | null;
   origem?: OrigemTarefa; // ausente em solicitações antigas
+  solicitadoPor?: string | null; // quem mandou a IA executar a tarefa (última execução que tocou no pedido)
 
   // Empresa: chave normalizada do nome (usada nas travas e no comentário).
   empresa: string | null;

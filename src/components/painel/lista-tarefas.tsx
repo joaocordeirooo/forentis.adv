@@ -1,6 +1,6 @@
 'use client';
 
-import { CalendarClock, Loader2, Play, RefreshCw, Search, UserRound } from 'lucide-react';
+import { CalendarClock, ExternalLink, Eye, Loader2, Play, RefreshCw, Search, UserRound } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { AvisoErro } from '@/components/ui/aviso-erro';
@@ -8,9 +8,11 @@ import { Esqueleto } from '@/components/ui/esqueleto';
 import { useConsulta } from '@/hooks/use-consulta';
 import { api } from '@/lib/api-client';
 import { relativo } from '@/lib/formato';
+import { linkTarefaLawyertool } from '@/lib/lawyertool-link';
 import { cn } from '@/lib/utils';
 import type { EstadoTarefa } from '@/models/tarefa.model';
 import { normalizar } from '@/utils/texto.util';
+import { JanelaTarefaLawyertool } from './janela-tarefa-lawyertool';
 
 // Situação da tarefa na automação, em uma etiqueta.
 function SituacaoAutomacao({ estado }: { estado: EstadoTarefa | null }) {
@@ -28,6 +30,7 @@ function SituacaoAutomacao({ estado }: { estado: EstadoTarefa | null }) {
 }
 
 export function ListaTarefas() {
+  const [tarefaAberta, setTarefaAberta] = useState<number | null>(null);
   const roteador = useRouter();
   const [atualizar, setAtualizar] = useState(0);
   const { dados, erro, carregando } = useConsulta(() => api.tarefas(atualizar > 0), null, atualizar);
@@ -130,6 +133,14 @@ export function ListaTarefas() {
                 >
                   {iniciando === t.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />} Analisar
                 </button>
+                <span className="flex shrink-0 items-center gap-1 self-start sm:self-auto">
+                  <button onClick={() => setTarefaAberta(t.id)} className="rounded-lg p-1.5 text-zinc-400 hover:bg-white/10 hover:text-white" title="Ver a tarefa na íntegra">
+                    <Eye className="h-4 w-4" />
+                  </button>
+                  <a href={linkTarefaLawyertool(t.id)} target="_blank" rel="noreferrer" className="rounded-lg p-1.5 text-zinc-400 hover:bg-violet-500/15 hover:text-violet-200" title="Abrir no Lawyertool">
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
+                </span>
               </li>
             );
           })}
@@ -141,6 +152,7 @@ export function ListaTarefas() {
           Mostrar mais ({visiveis.length - limite} restantes)
         </button>
       )}
+      <JanelaTarefaLawyertool tarefaId={tarefaAberta} aoFechar={() => setTarefaAberta(null)} />
     </div>
   );
 }

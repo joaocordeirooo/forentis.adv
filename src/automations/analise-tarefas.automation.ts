@@ -5,6 +5,7 @@ import { AppError } from '@/errors/app.errors';
 import type { Execucao, ResultadoTarefa } from '@/models/execucao.model';
 import type { Tarefa } from '@/models/tarefa.model';
 import { obterEstado, salvarEstado } from '@/repositories/estado-tarefa.repository';
+import { atualizarSolicitacao } from '@/repositories/solicitacao.repository';
 import { atualizarExecucao, listarExecucoes, salvarExecucao } from '@/repositories/execucao.repository';
 import { analisarTarefa } from '@/service/analise-tarefa.service';
 import { coletarContexto } from '@/service/contexto-tarefa.service';
@@ -177,7 +178,7 @@ async function analisarEPreparar(
 // Cria o registro da execução (e impede duas execuções ao mesmo tempo).
 export async function criarExecucao(
   filtroTarefaId: number | null,
-  opcoes: { forcar?: boolean; origem?: 'manual' | 'agenda'; tarefaIds?: number[] } = {},
+  opcoes: { forcar?: boolean; origem?: 'manual' | 'agenda'; tarefaIds?: number[]; solicitadoPor?: string | null } = {},
 ): Promise<Execucao> {
   const limite = Date.now() - EXECUCAO_TRAVADA_HORAS * 3_600_000;
   const rodando = (await listarExecucoes()).find((e) => e.status === 'em_andamento' && Date.parse(e.iniciadaEm) > limite);
@@ -192,6 +193,7 @@ export async function criarExecucao(
     filtroTarefaId,
     tarefaIds: opcoes.tarefaIds?.length ? [...new Set(opcoes.tarefaIds)] : null,
     origem: opcoes.origem ?? 'manual',
+    solicitadoPor: opcoes.solicitadoPor?.trim() || null,
     forcar: opcoes.forcar ?? Boolean(filtroTarefaId || opcoes.tarefaIds?.length), // tarefa escolhida a dedo é sempre reanalisada
     tarefasEncontradas: 0,
     tarefasProcessadas: 0,
@@ -222,6 +224,7 @@ export async function executarAnalise(execucao: Execucao): Promise<void> {
     for (const tarefa of tarefas) {
       console.log(`[automação] tarefa ${tarefa.id} — ${tarefa.titulo ?? ''}`);
       const resultado = await processarTarefa(tarefa, execucao.id, execucao.forcar);
+      await marcarSolicitante(resultado.solicitacoes, execucao.solicitadoPor);
       await atualizarExecucao(execucao.id, (e) => ({
         ...e,
         tarefasProcessadas: e.tarefasProcessadas + 1,
@@ -259,6 +262,7 @@ async function executarSelecionadas(execucao: Execucao, ids: number[]): Promise<
   for (const tarefa of tarefas) {
     console.log(`[automação] tarefa selecionada ${tarefa.id} — ${tarefa.titulo ?? ''}`);
     const resultado = await processarTarefa(tarefa, execucao.id, true, true);
+    await marcarSolicitante(resultado.solicitacoes, execucao.solicitadoPor);
     await atualizarExecucao(execucao.id, (e) => ({
       ...e,
       tarefasProcessadas: e.tarefasProcessadas + 1,
@@ -267,4 +271,16 @@ async function executarSelecionadas(execucao: Execucao, ids: number[]): Promise<
   }
 
   await atualizarExecucao(execucao.id, (e) => ({ ...e, status: 'concluida', finalizadaEm: new Date().toISOString() }));
+}
+
+// Grava em cada pedido quem mandou a IA executar (para o funcionário filtrar "as minhas").
+async function marcarSolicitante(ids: string[], solicitadoPor: string | null | undefined): Promise<void> {
+  if (!solicitadoPor) return;
+  for (const id of ids) {
+    try {
+      await atualizarSolicitacao(id, (s) => ({ ...s, solicitadoPor }));
+    } catch (erro) {
+      console.error('[automação] não gravou o solicitante', id, erro);
+    }
+  }
 }

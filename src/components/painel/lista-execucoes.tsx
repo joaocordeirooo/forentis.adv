@@ -68,7 +68,7 @@ function Linha({ e }: { e: ExecucaoResumo }) {
             {e.modoTeste && <FlaskConical className="h-3.5 w-3.5 text-amber-300" aria-label="Modo teste" />}
           </p>
           <p className="text-xs text-zinc-500">
-            {e.tarefasProcessadas} processada(s) de {e.tarefasEncontradas} encontrada(s){e.filtroTarefaId ? ` · só a tarefa #${e.filtroTarefaId}` : ''} · {e.naoTratadas} não tratada(s)
+            {e.tarefasProcessadas} processada(s) de {e.tarefasEncontradas} encontrada(s){e.filtroTarefaId ? ` · só a tarefa #${e.filtroTarefaId}` : ''}{e.tarefaIds?.length ? ` · ${e.tarefaIds.length} escolhida(s)` : ''}{e.solicitadoPor ? ` · pedida por ${e.solicitadoPor}` : e.origem === 'agenda' ? ' · automática (agenda)' : ''} · {e.naoTratadas} não tratada(s)
           </p>
         </div>
         <ChevronDown className={cn('h-4 w-4 text-zinc-500 transition', aberta && 'rotate-180')} />

@@ -23,6 +23,7 @@ interface EstadoFiltro {
   setor: string; // id do setor, 'sem' ou '' (todos)
   fluxo: string;
   responsavel: string;
+  pedidoPor: string; // quem mandou a IA executar ('' = todos, SEM = execução sem nome)
   status: StatusSolicitacao[];
   tipos: TipoSolicitacao[];
   criadaDe: string;
@@ -33,7 +34,7 @@ interface EstadoFiltro {
 }
 
 const ABERTOS: StatusSolicitacao[] = ['aguardando_conferencia', 'bloqueada', 'falha_envio'];
-const PADRAO: EstadoFiltro = { setor: '', fluxo: '', responsavel: '', status: ABERTOS, tipos: [], criadaDe: '', criadaAte: '', concluidaDe: '', concluidaAte: '', busca: '' };
+const PADRAO: EstadoFiltro = { setor: '', fluxo: '', responsavel: '', pedidoPor: '', status: ABERTOS, tipos: [], criadaDe: '', criadaAte: '', concluidaDe: '', concluidaAte: '', busca: '' };
 const CHAVE_STORAGE = 'forentis.filtroSolicitacoes';
 const CHAVE_POR_PAGINA = 'forentis.solicitacoesPorPagina';
 const TAMANHOS_PAGINA = [12, 24, 48] as const;
@@ -119,16 +120,19 @@ export function FilaSolicitacoes() {
     const setores = new Map<string, string>();
     const fluxos = new Map<string, { nome: string; setor: string }>();
     const responsaveis = new Set<string>();
+    const pedidoPor = new Set<string>();
     for (const s of lista) {
       setores.set(chaveSetor(s), s.origem?.setor?.descricao ?? 'Sem setor');
       if (s.origem?.fluxo) fluxos.set(String(s.origem.fluxo.id), { nome: s.origem.fluxo.descricao, setor: chaveSetor(s) });
       if (s.responsavel) responsaveis.add(s.responsavel);
+      if (s.solicitadoPor) pedidoPor.add(s.solicitadoPor);
     }
     const porNome = (a: string, b: string) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' });
     return {
       setores: [...setores.entries()].sort((a, b) => porNome(a[1], b[1])),
       fluxos: [...fluxos.entries()].filter(([, f]) => !filtro.setor || f.setor === filtro.setor).sort((a, b) => porNome(a[1].nome, b[1].nome)),
       responsaveis: [...responsaveis].sort(porNome),
+      pedidoPor: [...pedidoPor].sort(porNome),
       contagemStatus: contar(lista, (s) => s.status),
       contagemTipo: contar(lista, (s) => s.tipo),
     };
@@ -141,6 +145,7 @@ export function FilaSolicitacoes() {
         (!filtro.setor || chaveSetor(s) === filtro.setor) &&
         (!filtro.fluxo || String(s.origem?.fluxo?.id) === filtro.fluxo) &&
         (!filtro.responsavel || s.responsavel === filtro.responsavel) &&
+        (!filtro.pedidoPor || (filtro.pedidoPor === SEM ? !s.solicitadoPor : s.solicitadoPor === filtro.pedidoPor)) &&
         (!filtro.status.length || filtro.status.includes(s.status)) &&
         (!filtro.tipos.length || filtro.tipos.includes(s.tipo)) &&
         dentro(dia(s.criadaEm), filtro.criadaDe, filtro.criadaAte) &&
@@ -224,7 +229,14 @@ export function FilaSolicitacoes() {
                   opcoes={(Object.keys(VISUAL_TIPO) as TipoSolicitacao[]).map((v) => ({ valor: v, rotulo: VISUAL_TIPO[v].rotulo, contagem: opcoes.contagemTipo.get(v) ?? 0 }))}
                 />
               </Campo>
-              <div className="xl:col-span-3">
+              <Campo rotulo="Pedido por (quem mandou a IA executar)">
+                <select value={filtro.pedidoPor} onChange={(e) => mudar({ pedidoPor: e.target.value })} className={estiloCampo}>
+                  <option value="">Todos</option>
+                  {opcoes.pedidoPor.map((nome) => <option key={nome} value={nome}>{nome}</option>)}
+                  <option value={SEM}>Execução automática / sem nome</option>
+                </select>
+              </Campo>
+              <div className="xl:col-span-2">
                 <span className="mb-1 block text-xs text-zinc-400">Busca</span>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />

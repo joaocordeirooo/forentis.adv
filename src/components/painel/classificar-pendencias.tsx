@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Etiqueta } from '@/components/ui/selo-status';
 import { api } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
+import { textoPeriodo } from '@/utils/texto.util';
 import type { Solicitacao } from '@/models/solicitacao.model';
 
 // Pendências que a IA não soube dizer se são do cliente ou de uma empresa.
@@ -57,7 +58,7 @@ export function ClassificarPendencias({
             <li key={i} className={cn('rounded-xl border p-3 transition-colors', feita ? 'border-white/5 bg-black/10 opacity-70' : 'border-amber-500/20 bg-amber-500/[0.04]')}>
               <p className="text-sm text-zinc-100">{p.documento || 'Sem descrição'}</p>
               <div className="mt-1 flex flex-wrap gap-2">
-                {p.periodo && <Etiqueta>{p.periodo}</Etiqueta>}
+                {textoPeriodo(p.periodo) && <Etiqueta>{textoPeriodo(p.periodo)}</Etiqueta>}
                 {p.destinatario_nome && <Etiqueta>citado: {p.destinatario_nome}</Etiqueta>}
               </div>
               {p.fontes?.slice(0, 2).map((f, j) => (

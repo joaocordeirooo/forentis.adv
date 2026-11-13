@@ -24,6 +24,7 @@ export interface Execucao {
   filtroTarefaId: number | null; // (antigo) uma tarefa só
   tarefaIds?: number[] | null; // tarefas escolhidas na aba Tarefas; null/ausente = todas as pendentes monitoradas
   origem: 'manual' | 'agenda';
+  solicitadoPor?: string | null; // funcionário que mandou a IA executar (aba Tarefas)
   forcar: boolean; // true = reanalisa mesmo as tarefas sem novidade
   tarefasEncontradas: number;
   tarefasProcessadas: number;

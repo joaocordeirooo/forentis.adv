@@ -1,7 +1,7 @@
 'use client';
 
 import { LayoutGroup, motion } from 'motion/react';
-import { ArrowRight, Building2, CircleHelp, Layers, MessageCircle, Send, ShieldAlert } from 'lucide-react';
+import { ArrowRight, Building2, CircleHelp, Layers, ListFilter, MessageCircle, Send, ShieldAlert, UserRound } from 'lucide-react';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { AvisoErro } from '@/components/ui/aviso-erro';
@@ -9,15 +9,26 @@ import { Contador } from '@/components/ui/contador';
 import { Esqueleto } from '@/components/ui/esqueleto';
 import { useConsulta } from '@/hooks/use-consulta';
 import { api, type ExecucaoCompleta } from '@/lib/api-client';
+import { Paginacao } from '@/components/ui/paginacao';
 import { cn } from '@/lib/utils';
 import type { Solicitacao } from '@/models/solicitacao.model';
 import { AnaliseAoVivo } from './analise-ao-vivo';
-import { agruparPorTarefa, ConferenciaPorTarefa } from './conferencia-por-tarefa';
+import { agruparPorTarefa, JanelaTarefa, ListaTarefasExecutadas } from './conferencia-por-tarefa';
 import { DetalheSolicitacao } from './detalhe-solicitacao';
 import { FluxoAnimado } from './fluxo-animado';
 import { STATUS_ABERTOS_PAINEL } from './tipo-solicitacao';
 
 const SEM_SETOR = 'sem-setor';
+const SEM_NOME = '__automatica'; // pedidos de execuções sem nome (agenda ou "analisar todas")
+const CHAVE_PEDIDO_POR = 'forentis.visaoPedidoPor';
+
+function lerPedidoPor(): string {
+  try {
+    return localStorage.getItem(CHAVE_PEDIDO_POR) ?? '';
+  } catch {
+    return '';
+  }
+}
 
 interface ResumoSetor {
   chave: string;
@@ -85,6 +96,21 @@ function CartaoSetor({ r, ativo, aoEscolher }: { r: ResumoSetor; ativo: boolean;
 export function VisaoGeral() {
   const [aberta, setAberta] = useState<string | null>(null);
   const [setorEscolhido, setSetorEscolhido] = useState<string | null>(null);
+  // Filtro "Pedido por": o funcionário vê só as tarefas que ele mandou a IA executar (a tela só roda no navegador).
+  const [pedidoPor, setPedidoPor] = useState(lerPedidoPor);
+  const [mostrarConcluidas, setMostrarConcluidas] = useState(false);
+  const [tipoTarefa, setTipoTarefa] = useState(''); // '' = todos os tipos
+  const [tarefaAberta, setTarefaAberta] = useState<number | null>(null);
+  const [pagina, setPagina] = useState(1);
+  const [porPagina, setPorPagina] = useState(10);
+  function escolherPedidoPor(valor: string) {
+    setPedidoPor(valor);
+    try {
+      localStorage.setItem(CHAVE_PEDIDO_POR, valor);
+    } catch {
+      /* sem armazenamento */
+    }
+  }
   // A lista de execuções é leve; o detalhe da última só é buscado de 3 em 3 s enquanto ela está rodando.
   const execucoes = useConsulta(api.execucoes, 15_000);
   const ultima = execucoes.dados?.[0] ?? null;
@@ -97,10 +123,34 @@ export function VisaoGeral() {
   const solicitacoes = useConsulta(api.solicitacoes, rodando ? 10_000 : 30_000);
   const tarefas = useConsulta(() => api.tarefas(), null);
 
-  const lista = useMemo(() => solicitacoes.dados ?? [], [solicitacoes.dados]);
+  const todas = useMemo(() => solicitacoes.dados ?? [], [solicitacoes.dados]);
+  const nomes = useMemo(
+    () => [...new Set(todas.map((s) => s.solicitadoPor).filter((n): n is string => Boolean(n)))].sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' })),
+    [todas],
+  );
+  const lista = useMemo(() => {
+    const filtrada = !pedidoPor ? todas : todas.filter((s) => (pedidoPor === SEM_NOME ? !s.solicitadoPor : s.solicitadoPor === pedidoPor));
+    return filtrada;
+  }, [todas, pedidoPor]);
   const setores = useMemo(() => resumirPorSetor(lista), [lista]);
   const setor = setores.find((r) => r.chave === setorEscolhido) ?? setores[0] ?? null;
-  const grupos = useMemo(() => (setor ? agruparPorTarefa(setor.lista) : []), [setor]);
+  const gruposSetor = useMemo(() => (setor ? agruparPorTarefa(setor.lista, mostrarConcluidas) : []), [setor, mostrarConcluidas]);
+  // Tipos de tarefa presentes no setor (com quantas pastas cada um tem).
+  const tiposTarefa = useMemo(() => {
+    const mapa = new Map<string, number>();
+    for (const g of gruposSetor) mapa.set(g.tipoTarefa, (mapa.get(g.tipoTarefa) ?? 0) + 1);
+    return [...mapa.entries()].sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'));
+  }, [gruposSetor]);
+  const tipoValido = tiposTarefa.some(([t]) => t === tipoTarefa) ? tipoTarefa : '';
+  const grupos = useMemo(() => (tipoValido ? gruposSetor.filter((g) => g.tipoTarefa === tipoValido) : gruposSetor), [gruposSetor, tipoValido]);
+  const totalPaginas = Math.max(1, Math.ceil(grupos.length / porPagina));
+  const paginaVisivel = Math.min(pagina, totalPaginas);
+  const visiveis = grupos.slice((paginaVisivel - 1) * porPagina, paginaVisivel * porPagina);
+  // A janela usa a lista inteira (não só o filtro), para continuar aberta enquanto o funcionário conclui os pedidos.
+  const grupoAberto = useMemo(
+    () => (tarefaAberta === null ? null : agruparPorTarefa(lista, true).find((g) => g.tarefaId === tarefaAberta) ?? null),
+    [lista, tarefaAberta],
+  );
 
   const abertas = lista.filter((s) => STATUS_ABERTOS_PAINEL.includes(s.status));
   const numeros = {
@@ -128,11 +178,26 @@ export function VisaoGeral() {
       <AvisoErro erro={execucoes.erro ?? solicitacoes.erro} />
 
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-semibold text-white">Por setor</h2>
-          <Link href="/documentos/tarefas" className="inline-flex items-center gap-1 text-sm text-violet-300 hover:text-violet-200">
-            Escolher tarefas para a IA <ArrowRight className="h-4 w-4" />
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2 text-sm text-zinc-400">
+              <UserRound className="h-4 w-4 text-violet-300" /> Pedido por
+              <select
+                value={pedidoPor}
+                onChange={(e) => escolherPedidoPor(e.target.value)}
+                className={cn('h-9 rounded-xl border bg-zinc-900/80 px-3 text-sm text-zinc-100 outline-none focus:border-violet-500', pedidoPor ? 'border-violet-500/50' : 'border-white/10')}
+              >
+                <option value="">Todos</option>
+                {nomes.map((n) => <option key={n} value={n}>{n}</option>)}
+                {pedidoPor && pedidoPor !== SEM_NOME && !nomes.includes(pedidoPor) && <option value={pedidoPor}>{pedidoPor}</option>}
+                <option value={SEM_NOME}>Execução automática / sem nome</option>
+              </select>
+            </label>
+            <Link href="/documentos/tarefas" className="inline-flex items-center gap-1 text-sm text-violet-300 hover:text-violet-200">
+              Escolher tarefas para a IA <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
         </div>
         {solicitacoes.carregando ? (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[0, 1, 2].map((i) => <Esqueleto key={i} className="h-36" />)}</div>
@@ -143,21 +208,50 @@ export function VisaoGeral() {
             </div>
           </LayoutGroup>
         ) : (
-          <div className="grid h-32 place-items-center rounded-2xl border border-dashed border-white/10 text-sm text-zinc-500">Nenhuma solicitação ainda. Escolha tarefas na aba Tarefas e execute a IA.</div>
+          <div className="grid h-32 place-items-center rounded-2xl border border-dashed border-white/10 text-sm text-zinc-500">
+            {pedidoPor ? 'Nenhum pedido para este filtro.' : 'Nenhuma solicitação ainda. Escolha tarefas na aba Tarefas e execute a IA.'}
+          </div>
         )}
       </section>
 
       {setor && (
         <section className="space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="font-semibold text-white">
-              {setor.nome} · <span className="text-zinc-400">{grupos.length} tarefa(s) para conferir</span>
+              {setor.nome} · <span className="text-zinc-400">{grupos.length} tarefa(s){mostrarConcluidas ? '' : ' para conferir'}</span>
             </h2>
-            <Link href="/documentos/solicitacoes" className="inline-flex items-center gap-1 text-sm text-violet-300 hover:text-violet-200">
-              Todas as solicitações <ArrowRight className="h-4 w-4" />
-            </Link>
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-2 text-sm text-zinc-400">
+                <ListFilter className="h-4 w-4 text-violet-300" /> Tipo de tarefa
+                <select
+                  value={tipoValido}
+                  onChange={(e) => { setTipoTarefa(e.target.value); setPagina(1); }}
+                  className={cn('h-9 max-w-80 rounded-xl border bg-zinc-900/80 px-3 text-sm text-zinc-100 outline-none focus:border-violet-500', tipoValido ? 'border-violet-500/50' : 'border-white/10')}
+                >
+                  <option value="">Todos ({gruposSetor.length})</option>
+                  {tiposTarefa.map(([t, n]) => <option key={t} value={t}>{t} ({n})</option>)}
+                </select>
+              </label>
+              <div className="inline-flex rounded-xl border border-white/10 p-1 text-sm">
+                {([[false, 'Para conferir'], [true, 'Todas']] as const).map(([valor, rotulo]) => (
+                  <button key={rotulo} onClick={() => { setMostrarConcluidas(valor); setPagina(1); }} className={cn('rounded-lg px-3 py-1 transition-colors', mostrarConcluidas === valor ? 'bg-white/10 text-white' : 'text-zinc-400 hover:text-zinc-200')}>
+                    {rotulo}
+                  </button>
+                ))}
+              </div>
+              <Link href="/documentos/solicitacoes" className="inline-flex items-center gap-1 text-sm text-violet-300 hover:text-violet-200">
+                Todas as solicitações <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
           </div>
-          <ConferenciaPorTarefa grupos={grupos} aoAbrir={setAberta} />
+          <ListaTarefasExecutadas
+            grupos={visiveis}
+            aoAbrir={setTarefaAberta}
+            vazio={tipoValido ? 'Nenhuma tarefa deste tipo neste setor.' : mostrarConcluidas ? 'Nenhuma tarefa neste setor.' : 'Nada aguardando conferência neste setor.'}
+          />
+          {grupos.length > 10 && (
+            <Paginacao tamanhos={[10, 25, 50]} pagina={paginaVisivel} totalPaginas={totalPaginas} porPagina={porPagina} totalItens={grupos.length} aoIr={(n) => setPagina(Math.min(Math.max(1, n), totalPaginas))} aoMudarPorPagina={(n) => { setPorPagina(n); setPagina(1); }} />
+          )}
         </section>
       )}
 
@@ -169,6 +263,7 @@ export function VisaoGeral() {
         {execucoes.carregando ? <Esqueleto className="h-64" /> : <AnaliseAoVivo execucao={execucao.dados} aoIniciar={execucoes.recarregar} />}
       </div>
 
+      <JanelaTarefa grupo={grupoAberto} aoFechar={() => setTarefaAberta(null)} aoAbrirPedido={setAberta} />
       <DetalheSolicitacao id={aberta} aoFechar={() => setAberta(null)} aoMudar={solicitacoes.recarregar} />
     </div>
   );
